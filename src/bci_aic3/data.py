@@ -1,4 +1,5 @@
-# data.py
+# src/data.py
+
 import os
 import pandas as pd
 from typing import Tuple
@@ -7,11 +8,7 @@ import torch
 from torch.utils.data import Dataset
 
 from bci_aic3.util import read_json_to_dict
-
-
-BASE_PATH = "/kaggle/input/mtcaic3"
-# base_path = "/data/raw/mtcaic3"
-LABEL_MAPPING_JSON_PATH = "../../configs/label_mapping.json"
+from bci_aic3.constants import BASE_PATH, LABEL_MAPPING_JSON_PATH
 
 
 class BCIDataset(Dataset):
@@ -70,7 +67,7 @@ class BCIDataset(Dataset):
             # uncomment the line below and comment the one above to include all 18 columns
             # trial_data = eeg_data.loc[start_idx:end_idx-1].values
 
-            # Preprocess the data (see next section)
+            # Preprocess the data
             processed_data = self.preprocess(trial_data)
 
             # Convert to tensor
@@ -132,7 +129,11 @@ def load_data(
 
 
 def main():
-    label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
+    # This is what I do for reproducability
+    # label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
+
+    # You can just use this to work with the data
+    label_mapping = {"Left": 0, "Right": 1, "Forward": 2, "Backward": 3}
 
     # Example of how to load the data using load_data
     train_mi, val_mi, test_mi = load_data(

@@ -1,3 +1,5 @@
+# src/train.py
+
 import torch
 import os
 from pytorch_lightning import seed_everything
@@ -7,6 +9,7 @@ from torch.utils.data import DataLoader
 from bci_aic3.data import load_data
 from bci_aic3.models.simple_cnn import BCIModel
 from bci_aic3.util import read_json_to_dict, rec_cpu_count
+from bci_aic3.constants import BASE_PATH, LABEL_MAPPING_JSON_PATH
 
 # Code necessary to create reproducible runs
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -14,10 +17,6 @@ seed_everything(42, workers=True)
 torch.use_deterministic_algorithms(True, warn_only=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-BASE_PATH = "/kaggle/input/mtcaic3"
-# BASE_PATH = "/data/raw/mtcaic3"
-LABEL_MAPPING_JSON_PATH = "../../configs/label_mapping.json"
 
 
 def main():
