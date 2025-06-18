@@ -130,10 +130,10 @@ def load_data(
 
 def main():
     # This is what I do for reproducability
-    # label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
+    label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
 
     # You can just use this to work with the data
-    label_mapping = {"Left": 0, "Right": 1, "Forward": 2, "Backward": 3}
+    # label_mapping = {"Left": 0, "Right": 1, "Forward": 2, "Backward": 3}
 
     # Example of how to load the data using load_data
     train_mi, val_mi, test_mi = load_data(

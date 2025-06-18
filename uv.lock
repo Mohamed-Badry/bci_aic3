@@ -123,7 +123,7 @@ wheels = [
 ]
 
 [[package]]
-name = "bci-aci3"
+name = "bci-aic3"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
@@ -139,6 +139,7 @@ dependencies = [
     { name = "torcheval" },
     { name = "torchinfo" },
     { name = "torchmetrics" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -155,6 +156,7 @@ requires-dist = [
     { name = "torcheval", specifier = ">=0.0.7" },
     { name = "torchinfo", specifier = ">=1.8.0" },
     { name = "torchmetrics", specifier = ">=1.7.3" },
+    { name = "tqdm", specifier = ">=4.67.1" },
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [project]
-name = "bci-aci3"
+name = "bci-aic3"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -17,4 +17,5 @@ dependencies = [
     "torcheval>=0.0.7",
     "torchinfo>=1.8.0",
     "torchmetrics>=1.7.3",
+    "tqdm>=4.67.1",
 ]
