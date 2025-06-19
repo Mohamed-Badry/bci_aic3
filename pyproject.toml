@@ -1,17 +1,17 @@
 [project]
-name = "bci-aic3"
+name = "bci_aic3"
 version = "0.1.0"
-description = "Add your description here"
+description = "BCI Package for Training and Evaluating BCI EEG models using SSVEP and MI data."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "ipykernel>=6.29.5",
+    "ipympl>=0.9.7",
     "matplotlib>=3.10.3",
     "mne>=1.9.0",
     "numpy>=2.3.0",
     "pandas>=2.3.0",
     "pytorch-lightning>=2.5.1.post0",
-    "ruff>=0.11.13",
     "seaborn>=0.13.2",
     "torch>=2.7.1",
     "torcheval>=0.0.7",
@@ -19,3 +19,12 @@ dependencies = [
     "torchmetrics>=1.7.3",
     "tqdm>=4.67.1",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -6,10 +6,10 @@ from pytorch_lightning import seed_everything
 from torch import nn, optim
 from torch.utils.data import DataLoader
 
-from bci_aic3.data import load_data
-from bci_aic3.models.simple_cnn import BCIModel
-from bci_aic3.util import read_json_to_dict, rec_cpu_count
-from bci_aic3.constants import BASE_PATH, LABEL_MAPPING_JSON_PATH
+from .data import load_data
+from .models.simple_cnn import BCIModel
+from .util import read_json_to_dict, rec_cpu_count
+from .paths import RAW_DATA_DIR, LABEL_MAPPING_DIR
 
 # Code necessary to create reproducible runs
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -21,7 +21,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
     task_type = "MI"  # MI or SSVEP
-    label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
+    label_mapping = read_json_to_dict(LABEL_MAPPING_DIR)
     sequence_length = None
 
     if task_type == "MI":
@@ -36,7 +36,7 @@ def main():
 
     # Loading the data
     train, val, _ = load_data(
-        base_path=BASE_PATH, task_type=task_type, label_mapping=label_mapping
+        base_path=RAW_DATA_DIR, task_type=task_type, label_mapping=label_mapping
     )
 
     train_loader = DataLoader(

@@ -1,3 +1,5 @@
+# src/models/eegnet.py
+
 # Original paper - https://arxiv.org/abs/1611.08024
 
 import torch

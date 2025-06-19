@@ -1,4 +1,5 @@
-# models/simple_cnn.py
+# src/models/simple_cnn.py
+
 import torch
 from torch import nn
 

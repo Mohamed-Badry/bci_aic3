@@ -13,3 +13,6 @@ wheels/
 
 # kaggle submissions
 submissions/
+
+# data folder
+data/

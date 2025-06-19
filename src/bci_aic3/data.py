@@ -2,17 +2,28 @@
 
 import os
 import pandas as pd
-from typing import Tuple
+from typing import Tuple, Dict, Optional
+from pathlib import Path
 
 import torch
 from torch.utils.data import Dataset
 
-from bci_aic3.util import read_json_to_dict
-from bci_aic3.constants import BASE_PATH, LABEL_MAPPING_JSON_PATH
+from .util import read_json_to_dict
+from .paths import CONFIG_DIR, RAW_DATA_DIR
 
 
 class BCIDataset(Dataset):
-    def __init__(self, csv_file, base_path, task_type="MI", label_mapping=None):
+    def __init__(
+        self,
+        csv_file,
+        base_path: Path | str,
+        task_type: str = "MI",
+        label_mapping: Optional[Dict[str, int]] = None,
+    ):
+        # Convert base_path to Path object if it's a string
+        if isinstance(base_path, str):
+            base_path = Path(base_path)
+
         # Filter the main dataframe for the specific task (MI or SSVEP)
         self.metadata = pd.read_csv(os.path.join(base_path, csv_file))
         self.metadata = self.metadata[self.metadata["task"] == task_type]
@@ -42,13 +53,13 @@ class BCIDataset(Dataset):
                 dataset_split = "test"
 
             # Path to the EEG data file
-            eeg_path = os.path.join(
-                self.base_path,
-                row["task"],
-                dataset_split,
-                row["subject_id"],
-                str(row["trial_session"]),
-                "EEGdata.csv",
+            eeg_path = (
+                self.base_path
+                / row["task"]
+                / dataset_split
+                / row["subject_id"]
+                / str(row["trial_session"])
+                / "EEGdata.csv"
             )
 
             eeg_data = pd.read_csv(eeg_path)
@@ -97,10 +108,14 @@ class BCIDataset(Dataset):
 
 
 def load_data(
-    base_path, task_type, label_mapping=None
+    base_path: str | Path,
+    task_type: str,
+    label_mapping: Optional[Dict[str, int]] = None,
 ) -> Tuple[BCIDataset, BCIDataset, BCIDataset]:
     """
     Loads the train, val, test data for the given {task_type} inside the given {base_path}
+
+    If no label_mapping is passed the data is loaded with the original labels.
 
     Returns:
         a tuple of BCIDataset in the order (train, val, test)
@@ -130,19 +145,22 @@ def load_data(
 
 def main():
     # This is what I do for reproducability
-    label_mapping = read_json_to_dict(LABEL_MAPPING_JSON_PATH)
+    label_mapping = read_json_to_dict(CONFIG_DIR / "label_mapping.json")
 
     # You can just use this to work with the data
     # label_mapping = {"Left": 0, "Right": 1, "Forward": 2, "Backward": 3}
 
     # Example of how to load the data using load_data
     train_mi, val_mi, test_mi = load_data(
-        base_path=BASE_PATH, task_type="MI", label_mapping=label_mapping
+        base_path=RAW_DATA_DIR, task_type="MI", label_mapping=label_mapping
     )
 
     train_ssvep, val_ssvep, test_ssvep = load_data(
-        base_path=BASE_PATH, task_type="SSVEP", label_mapping=label_mapping
+        base_path=RAW_DATA_DIR, task_type="SSVEP", label_mapping=label_mapping
     )
+
+    print(len(train_mi))
+    print(len(test_ssvep))
 
 
 if __name__ == "__main__":
