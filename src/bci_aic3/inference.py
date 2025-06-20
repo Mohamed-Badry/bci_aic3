@@ -1,6 +1,6 @@
 from bci_aic3.data import BCIDataset
 from bci_aic3.models.eegnet import EEGNet
-from bci_aic3.util import read_json_to_dict
+from bci_aic3.util import read_json_to_dict, load_model
 from bci_aic3.paths import (
     MODELS_DIR,
     CONFIG_DIR,

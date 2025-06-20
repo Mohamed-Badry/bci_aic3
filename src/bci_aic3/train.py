@@ -8,8 +8,9 @@ from torch.utils.data import DataLoader
 
 from bci_aic3.data import load_data
 from bci_aic3.models.simple_cnn import BCIModel
-from bci_aic3.util import read_json_to_dict, rec_cpu_count
+from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
 from bci_aic3.paths import RAW_DATA_DIR, LABEL_MAPPING_PATH
+
 
 # Code necessary to create reproducible runs
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
