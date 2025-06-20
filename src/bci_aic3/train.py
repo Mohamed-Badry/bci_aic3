@@ -24,6 +24,7 @@ def main():
     task_type = "MI"  # MI or SSVEP
     label_mapping = read_json_to_dict(LABEL_MAPPING_PATH)
     sequence_length = None
+    num_classes = None
 
     if task_type == "MI":
         num_classes = 2

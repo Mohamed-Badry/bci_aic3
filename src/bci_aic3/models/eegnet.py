@@ -70,7 +70,7 @@ class EEGNet(nn.Module):
         self.batchnorm2 = nn.BatchNorm2d(F1 * D)
 
         # Apply max_norm constraint to depthwise conv weights
-        self.depthwise_conv = weight_norm(self.depthwise_conv, name="weight", dim=None)
+        self.depthwise_conv = weight_norm(self.depthwise_conv, name="weight")
 
         self.avgpool1 = nn.AvgPool2d((1, 4))
 
