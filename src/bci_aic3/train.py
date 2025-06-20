@@ -1,15 +1,33 @@
 # src/train.py
 
+import argparse
+from pathlib import Path
 import torch
 import os
-from pytorch_lightning import seed_everything
+from pytorch_lightning import seed_everything, LightningModule, Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.loggers import TensorBoardLogger
 from torch import nn, optim
 from torch.utils.data import DataLoader
+import torchmetrics
 
 from bci_aic3.data import load_data
 from bci_aic3.models.simple_cnn import BCIModel
+from bci_aic3.models.eegnet import EEGNet
 from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
-from bci_aic3.paths import RAW_DATA_DIR, LABEL_MAPPING_PATH
+from bci_aic3.paths import (
+    CHECKPOINTS_DIR,
+    RAW_DATA_DIR,
+    LABEL_MAPPING_PATH,
+    CONFIG_DIR,
+    SUBMISSIONS_DIR,
+)
+from bci_aic3.config import (
+    ModelConfig,
+    TrainingConfig,
+    load_model_config,
+    load_training_config,
+)
 
 
 # Code necessary to create reproducible runs
@@ -17,73 +35,218 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 seed_everything(42, workers=True)
 torch.use_deterministic_algorithms(True, warn_only=True)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class BCILightningModule(LightningModule):
+    def __init__(
+        self,
+        model_config: ModelConfig,
+        training_config: TrainingConfig,
+        # TODO: Add more hyperparameters from config
+        # optimizer_name: str = "adam",
+        # weight_decay: float = 0.0,
+        # scheduler_name: str = None,
+    ):
+        super().__init__()
+        self.save_hyperparameters()  # Automatically saves all __init__ params
+
+        self.model_config = model_config
+        # self.training_config = training_config
+
+        # Model
+        self.model = EEGNet(
+            self.model_config.num_classes,
+            self.model_config.num_channels,
+            self.model_config.sequence_length,
+        )
+
+        # Loss function
+        self.criterion = nn.CrossEntropyLoss()
+
+        # Metrics - Lightning handles device placement automatically
+        self.train_accuracy = torchmetrics.Accuracy(
+            task="multiclass", num_classes=self.model_config.num_classes
+        )
+        self.val_accuracy = torchmetrics.Accuracy(
+            task="multiclass", num_classes=self.model_config.num_classes
+        )
+
+        self.train_f1 = torchmetrics.F1Score(
+            task="multiclass",
+            num_classes=self.model_config.num_classes,
+            average="macro",
+        )
+        self.val_f1 = torchmetrics.F1Score(
+            task="multiclass",
+            num_classes=self.model_config.num_classes,
+            average="macro",
+        )
+
+    def forward(self, x):
+        # Lightning calls this for inference
+        return self.model(x.transpose(1, 2))  # Your transpose logic
+
+    def training_step(self, batch, batch_idx):
+        data, labels = batch
+
+        outputs = self(data)  # Use self() instead of self.model() for consistency
+        loss = self.criterion(outputs, labels)
+
+        # Metrics
+        preds = torch.argmax(outputs, dim=1)
+        self.train_accuracy(preds, labels)
+
+        # Lightning automatically logs these
+        self.log("train_f1", self.train_f1, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log(
+            "train_acc",
+            self.train_accuracy,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        data, labels = batch
+        outputs = self(data)
+        loss = self.criterion(outputs, labels)
+
+        # Metrics
+        preds = torch.argmax(outputs, dim=1)
+        self.val_accuracy(preds, labels)
+
+        # Lightning automatically logs these
+        self.log("val_f1", self.val_f1, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "val_acc", self.val_accuracy, on_step=False, on_epoch=True, prog_bar=True
+        )
+
+        return loss
+
+    def predict_step(self, batch, batch_idx):
+        # For inference/prediction
+        data, _ = batch
+        outputs = self(data)
+        return torch.softmax(outputs, dim=1)
 
 
-def main():
-    task_type = "MI"  # MI or SSVEP
+def create_data_loaders(
+    base_path: Path, task_type: str, batch_size: int, num_workers: int
+):
     label_mapping = read_json_to_dict(LABEL_MAPPING_PATH)
-    sequence_length = None
-    num_classes = None
-
-    if task_type == "MI":
-        num_classes = 2
-        sequence_length = 2250
-    elif task_type == "SSVEP":
-        num_classes = 4
-        sequence_length = 1750
-
-    batch_size = 32
-    max_num_workers = rec_cpu_count()
 
     # Loading the data
-    train, val, _ = load_data(
-        base_path=RAW_DATA_DIR, task_type=task_type, label_mapping=label_mapping
+    train, val, test = load_data(
+        base_path=base_path, task_type=task_type, label_mapping=label_mapping
     )
 
     train_loader = DataLoader(
-        train, batch_size=batch_size, shuffle=True, num_workers=max_num_workers
+        train,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
     )
+
     val_loader = DataLoader(
-        val, batch_size=batch_size, shuffle=False, num_workers=max_num_workers
+        val,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
     )
 
-    # Defining the model, loss, and optimizer
-    model = BCIModel(
-        train[0][0].shape[1], num_classes=num_classes, sequence_length=sequence_length
+    # TODO: Also return test_loader for final evaluation
+    # test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return train_loader, val_loader
+
+
+def setup_callbacks(model_config):
+    """
+    TODO: Make callback configuration configurable via config files
+    """
+    callbacks = [
+        # Save best model based on F1 score (better for imbalanced classes)
+        ModelCheckpoint(
+            dirpath=CHECKPOINTS_DIR / model_config.task_type,
+            monitor="val_f1",
+            mode="max",  # Higher F1 is better
+            save_top_k=3,  # Keep top 3 models
+            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{epoch:02d}}-{{val_f1:.4f}}",
+            save_last=True,  # Always save the last checkpoint
+            verbose=True,
+        ),
+        # Early stopping to prevent overfitting
+        EarlyStopping(
+            monitor="val_loss",
+            mode="min",
+            patience=10,
+            verbose=True,
+        ),
+    ]
+    return callbacks
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config_file",
+        required=True,
+        help="Name of the config file in the config directory.",
     )
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    args = parser.parse_args()
+    print(args)
 
-    # Training loop
-    num_epochs = 10
-    for epoch in range(num_epochs):
-        model.train()
-        for data, labels in train_loader:
-            data = data.to(device)
-            labels = data.to(device)
+    model_config = load_model_config(CONFIG_DIR / args.config_file)
+    training_config = load_training_config(CONFIG_DIR / args.config_file)
 
-            optimizer.zero_grad()
-            outputs = model(data.transpose(1, 2))
+    max_num_workers = rec_cpu_count()
 
-            loss = criterion(outputs, labels)
+    # Create data loaders
+    train_loader, val_loader = create_data_loaders(
+        base_path=RAW_DATA_DIR,
+        task_type=model_config.task_type,
+        batch_size=training_config.batch_size,
+        num_workers=max_num_workers,
+    )
 
-            loss.backward()
-            optimizer.step()
+    # Create Lightning module
+    model = BCILightningModule(
+        model_config=model_config,
+        training_config=training_config,
+    )
 
-        # Validation
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for data, labels in val_loader:
-                data = data.to(device)
-                labels = data.to(device)
+    # Setup callbacks
+    callbacks = setup_callbacks(model_config)
 
-                outputs = model(data.transpose(1, 2))
+    # Setup logger - TODO: Make configurable
+    logger = TensorBoardLogger("lightning_logs", name="bci_experiment")
 
-                val_loss += criterion(outputs, labels).item()
+    # Create trainer
+    trainer = Trainer(
+        max_epochs=training_config.epochs,
+        callbacks=callbacks,
+        logger=logger,
+        accelerator="auto",  # Automatically uses GPU if available
+        devices="auto",  # Uses all available devices
+        deterministic=True,  # For reproducibility
+        log_every_n_steps=10,
+    )
 
-        print(f"Epoch {epoch + 1}, Val Loss: {val_loss / len(val_loader)}")
+    # Train the model
+    trainer.fit(model, train_loader, val_loader)
+
+    # TODO: Save final model in custom format if needed
+    # best_model_path = trainer.checkpoint_callback.best_model_path
+    # model = BCILightningModule.load_from_checkpoint(best_model_path)
+    # save_model(model.model, MODEL_DIR / "")
+
+    # print("Training completed!")
+    # print(f"Best model saved at: {trainer.checkpoint_callback.best_model_path}")
 
 
 if __name__ == "__main__":

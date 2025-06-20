@@ -117,17 +117,17 @@ class EEGNet(nn.Module):
 
     def forward(self, x):
         # Handle different input formats
-        if x.dim() == 3:
-            # Input shape: (batch_size, samples, channels)
-            # Reshape to (batch_size, channels, samples, 1) then to (batch_size, 1, channels, samples)
-            x = x.permute(0, 2, 1)  # (batch_size, channels, samples)
-            x = x.unsqueeze(1)  # (batch_size, 1, channels, samples)
-        elif x.dim() == 4:
-            # Input shape: (batch_size, channels, samples_per_trial, 1)
-            # Reshape to (batch_size, 1, channels, samples_per_trial) for PyTorch conv2d
-            x = x.permute(0, 3, 1, 2)
-        else:
-            raise ValueError(f"Expected input to be 3D or 4D, got {x.dim()}D tensor")
+        # if x.dim() == 3:
+        #     # Input shape: (batch_size, samples, channels)
+        #     # Reshape to (batch_size, channels, samples, 1) then to (batch_size, 1, channels, samples)
+        #     x = x.permute(0, 2, 1)  # (batch_size, channels, samples)
+        #     x = x.unsqueeze(1)  # (batch_size, 1, channels, samples)
+        # elif x.dim() == 4:
+        #     # Input shape: (batch_size, channels, samples_per_trial, 1)
+        #     # Reshape to (batch_size, 1, channels, samples_per_trial) for PyTorch conv2d
+        #     x = x.permute(0, 3, 1, 2)
+        # else:
+        #     raise ValueError(f"Expected input to be 3D or 4D, got {x.dim()}D tensor")
 
         # Block 1
         x = self.conv1(x)
