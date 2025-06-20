@@ -4,6 +4,7 @@ import os
 import json
 import torch
 from pathlib import Path
+from typing import Dict
 
 
 def rec_cpu_count() -> int:
@@ -47,3 +48,19 @@ def save_model(
         },
         save_path,
     )
+
+
+def normalize(x, mean, std):
+    # x: Tensor of shape (C, T) or (N, C, T)
+    return (x - mean[:, None]) / std[:, None]
+
+
+# Helper functions for managing training statistics
+def save_training_stats(stats: Dict[str, torch.Tensor | None], save_path: Path):
+    """Save training statistics to disk."""
+    torch.save(stats, save_path)
+
+
+def load_training_stats(load_path: Path) -> Dict[str, torch.Tensor]:
+    """Load training statistics from disk."""
+    return torch.load(load_path)

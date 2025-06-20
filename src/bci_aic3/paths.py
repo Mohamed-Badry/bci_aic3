@@ -20,6 +20,8 @@ CONFIG_DIR = PROJECT_ROOT / "configs"
 LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
 REVERSE_LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
 
+# training statistics
+TRAINING_STATS_PATH = PROJECT_ROOT / "training_stats"
 
 # data
 DATA_DIR = PROJECT_ROOT / "data"

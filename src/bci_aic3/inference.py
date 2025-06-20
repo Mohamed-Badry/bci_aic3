@@ -1,14 +1,14 @@
 from bci_aic3.data import BCIDataset
 from bci_aic3.models.eegnet import EEGNet
-from bci_aic3.util import read_json_to_dict, load_model
 from bci_aic3.paths import (
-    MODELS_DIR,
     CONFIG_DIR,
-    RAW_DATA_DIR,
     LABEL_MAPPING_PATH,
-    REVERSE_LABEL_MAPPING_PATH,
+    MODELS_DIR,
     PROJECT_ROOT,
+    RAW_DATA_DIR,
+    REVERSE_LABEL_MAPPING_PATH,
 )
+from bci_aic3.util import load_model, read_json_to_dict
 
 
 def make_inference():
@@ -45,6 +45,7 @@ def main():
         csv_file="test.csv",
         base_path=RAW_DATA_DIR,
         task_type="MI",
+        split="test",
         label_mapping=label_mapping,
     )
 
@@ -52,6 +53,7 @@ def main():
         csv_file="test.csv",
         base_path=RAW_DATA_DIR,
         task_type="MI",
+        split="test",
         label_mapping=label_mapping,
     )
 

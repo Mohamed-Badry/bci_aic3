@@ -11,6 +11,7 @@ def main():
         "--output_path", default=SUBMISSIONS_DIR, help="Output directory"
     )
     args = parser.parse_args()
+    print(args)
 
 
 if __name__ == "__main__":

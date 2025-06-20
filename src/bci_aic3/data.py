@@ -1,15 +1,17 @@
 # src/data.py
 
 import os
-import pandas as pd
-from typing import Tuple, Dict, Optional
 from pathlib import Path
+from typing import Dict, Optional, Tuple
 
+import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
-from .util import read_json_to_dict
 from .paths import CONFIG_DIR, RAW_DATA_DIR
+from .util import read_json_to_dict
 
 
 class BCIDataset(Dataset):
@@ -17,8 +19,12 @@ class BCIDataset(Dataset):
         self,
         csv_file,
         base_path: Path | str,
+        split: str,
         task_type: str = "MI",
         label_mapping: Optional[Dict[str, int]] = None,
+        training_stats: Optional[Dict[str, torch.Tensor | None]] = None,
+        num_channels: int = 8,
+        raw: bool = True,
     ):
         # Convert base_path to Path object if it's a string
         if isinstance(base_path, str):
@@ -29,7 +35,10 @@ class BCIDataset(Dataset):
         self.metadata = self.metadata[self.metadata["task"] == task_type]
         self.base_path = base_path
         self.task_type = task_type
+        self.split = split
         self.label_mapping = label_mapping
+        self.training_mean = None
+        self.training_std = None
 
         # 9 seconds * 250 Hz = 2250 for MI
         # 7 seconds * 250 Hz = 1750 for SSVEP
@@ -38,25 +47,19 @@ class BCIDataset(Dataset):
         num_trials = len(self.metadata)
 
         self.tensor_data = torch.empty(
-            num_trials, self.sequence_length, 8, dtype=torch.float32
+            num_trials, num_channels, self.sequence_length, dtype=torch.float32
         )
         self.labels = torch.empty(num_trials, dtype=torch.long)
 
-        for i, (idx, row) in enumerate(self.metadata.iterrows()):
-            # Determine dataset split (train/validation/test)
-            id_num = row["id"]
-            if id_num <= 4800:
-                dataset_split = "train"
-            elif id_num <= 4900:
-                dataset_split = "validation"
-            else:
-                dataset_split = "test"
+        # For calculating training statistics
+        training_data_list = []
 
+        for i, (idx, row) in tqdm(enumerate(self.metadata.iterrows())):
             # Path to the EEG data file
             eeg_path = (
                 self.base_path
                 / row["task"]
-                / dataset_split
+                / self.split
                 / row["subject_id"]
                 / str(row["trial_session"])
                 / "EEGdata.csv"
@@ -73,16 +76,17 @@ class BCIDataset(Dataset):
 
             # Select only the 8 EEG channels
             eeg_channels = ["FZ", "C3", "CZ", "C4", "PZ", "PO7", "OZ", "PO8"]
-            trial_data = eeg_data.loc[start_idx:end_idx, eeg_channels].values
+            trial_data = eeg_data.loc[start_idx:end_idx, eeg_channels].values.T
 
             # uncomment the line below and comment the one above to include all 18 columns
             # trial_data = eeg_data.loc[start_idx:end_idx-1].values
 
-            # Preprocess the data
-            processed_data = self.preprocess(trial_data)
+            # Store raw training data for statistics calculation
+            if self.split == "train":
+                training_data_list.append(trial_data)
 
             # Convert to tensor
-            tensor_data = torch.tensor(processed_data, dtype=torch.float32)
+            tensor_data = torch.tensor(trial_data, dtype=torch.float32)
             self.tensor_data[i] = tensor_data
 
             # Get label if it exists
@@ -91,20 +95,55 @@ class BCIDataset(Dataset):
                 label_int = self.label_mapping[label_str]
                 self.labels[i] = label_int
 
+        # Calculate or use provided training statistics
+        if training_stats is not None:
+            self.training_mean = training_stats["mean"]
+            self.training_std = training_stats["std"]
+        else:
+            # Calculate training statistics
+            if training_data_list:
+                # Stack all training data: (n_trials, sequence_length, n_channels)
+                training_data = torch.tensor(
+                    np.array(training_data_list), dtype=torch.float32
+                )
+
+                # Calculate mean and std across trials and time points for each channel
+                # Shape: (n_channels,)
+                self.training_mean = training_data.mean(dim=(0, 2))
+                self.training_std = training_data.std(dim=(0, 2))
+
+                # Prevent division by zero
+                self.training_std = torch.clamp(self.training_std, min=1e-8)
+            else:
+                # Fallback if no training data
+                self.training_mean = torch.zeros(8)
+                self.training_std = torch.ones(8)
+
+        # preprocess data
+        self.tensor_data = self.preprocess(self.tensor_data)
+
     def __len__(self):
         return len(self.tensor_data)
 
     def __getitem__(self, idx):
-        if self.labels[idx] is not None:
-            return self.tensor_data[idx], self.labels[idx]
-        else:
+        if self.split == "test":
             return self.tensor_data[idx]
+        else:
+            return self.tensor_data[idx], self.labels[idx]
 
     def preprocess(self, eeg_data):
         # Apply preprocessing steps here (filtering, normalization, etc.)
         # This will be different for MI and SSVEP
-        # ...
-        return eeg_data
+
+        # normalize data
+        normalized_data = (
+            eeg_data - self.training_mean[:, None]  # type: ignore
+        ) / self.training_std[:, None]  # type: ignore
+        return normalized_data
+
+    def get_training_stats(self):
+        """Return the training statistics for saving/reuse."""
+        return {"mean": self.training_mean, "std": self.training_std}
 
 
 def load_data(
@@ -125,19 +164,29 @@ def load_data(
         csv_file="train.csv",
         base_path=base_path,
         task_type=task_type,
+        split="train",
         label_mapping=label_mapping,
+        training_stats=None,
     )
+
+    # Get the calculated training statistics
+    training_stats = train.get_training_stats()
+
     val = BCIDataset(
         csv_file="validation.csv",
         base_path=base_path,
         task_type=task_type,
+        split="validation",
         label_mapping=label_mapping,
+        training_stats=training_stats,
     )
     test = BCIDataset(
         csv_file="test.csv",
         base_path=base_path,
         task_type=task_type,
+        split="test",
         label_mapping=label_mapping,
+        training_stats=training_stats,
     )
 
     return train, val, test
