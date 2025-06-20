@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.nn.utils.parametrizations import weight_norm
 
 
-class EEGNet_SSVEP(nn.Module):
+class EEGNet(nn.Module):
     """SSVEP Variant of EEGNet, as used in [1].
 
     Inputs:
@@ -40,7 +40,7 @@ class EEGNet_SSVEP(nn.Module):
         F2=96,
         dropoutType="Dropout",
     ):
-        super(EEGNet_SSVEP, self).__init__()
+        super(EEGNet, self).__init__()
 
         self.num_classes = num_classes
         self.channels = channels
