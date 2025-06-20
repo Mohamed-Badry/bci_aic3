@@ -15,19 +15,26 @@ def make_inference():
     pass
 
 
-def load_models(ssvep_path, ssvep_class, mi_path, mi_class):
-    ssvep_model = load_ssvep(ssvep_path, ssvep_class)
-    mi_model = load_mi(mi_path, mi_class)
+def load_models(ssvep_config, mi_config):
+    ssvep_model = load_model(
+        model_path=ssvep_config["path"],
+        model_class=ssvep_config["class"],
+        model_kwargs=ssvep_config["kwargs"],
+        device=ssvep_config["device"],
+        optim=ssvep_config["optim"],
+        learning_rate=ssvep_config["lr"],
+    )
+
+    mi_model = load_model(
+        model_path=mi_config["path"],
+        model_class=mi_config["class"],
+        model_kwargs=mi_config["kwargs"],
+        device=mi_config["device"],
+        optim=mi_config["optim"],
+        learning_rate=mi_config["lr"],
+    )
 
     return ssvep_model, mi_model
-
-
-def load_mi(weights_path, model_class):
-    pass
-
-
-def load_ssvep(weights_path, model_class):
-    pass
 
 
 def predict_ssvep(ssvep_model, test_ssvep):
