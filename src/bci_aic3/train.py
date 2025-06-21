@@ -24,9 +24,8 @@ from bci_aic3.paths import (
     CONFIG_DIR,
     LABEL_MAPPING_PATH,
     RAW_DATA_DIR,
-    SUBMISSIONS_DIR,
 )
-from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
+from bci_aic3.util import read_json_to_dict, rec_cpu_count
 
 
 class BCILightningModule(LightningModule):
