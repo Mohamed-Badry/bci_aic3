@@ -86,16 +86,49 @@ SSVEP: (Left, Right, Forward, Backward)
 
 ### Steps to run
 
+
+If you're using uv:
+
 ```
 uv sync
 ```
 
 To train the MI model.
 ```
-uv run -m bci_aic3.train --config_file mi_config.yaml
+uv run -m bci_aic3.train --task_type MI
 ```
 
 To train the SSVEP model.
 ```
-uv run -m bci_aic3.train --config_file ssvep_config.yaml
+uv run -m bci_aic3.train --task_type SSVEP
+```
+
+Both use a predifined config file path defined in `src/bci_aic3/paths.py` located in `configs/` which you can edit.
+
+##### Config File Structure
+```yaml
+# model config
+model:
+  name: "EEGNet"
+  task_type: "MI"
+  num_classes: 2
+  sequence_length: 2250
+  num_channels: 8
+
+# training config
+training:
+  epochs: 100
+  batch_size: 128
+  learning_rate: 0.001
+
+# preprocessing settings
+preprocessing:
+  notch_freq: 50.0
+  lfreq: 6.0
+  hfreq: 32.0
+  baseline: [0.0, 1.0]
+  tmin: 2.0
+  tmax: 8.0
+  sfreq: 250.0
+  scaling_factor: 1.0e-6
 ```
