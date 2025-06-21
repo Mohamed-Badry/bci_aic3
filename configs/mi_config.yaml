@@ -1,3 +1,4 @@
+# model config
 model:
   name: "EEGNet"
   task_type: "MI"
@@ -5,7 +6,19 @@ model:
   sequence_length: 2250
   num_channels: 8
 
+# training config
 training:
   epochs: 100
   batch_size: 128
   learning_rate: 0.001
+
+# preprocessing settings
+preprocessing:
+  notch_freq: 50.0
+  lfreq: 6.0
+  hfreq: 32.0
+  baseline: [0.0, 1.0]
+  tmin: 2.0
+  tmax: 8.0
+  sfreq: 250.0
+  scaling_factor: 1.0e-6

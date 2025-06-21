@@ -7,11 +7,11 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, TensorDataset
 from tqdm import tqdm
 
-from .paths import CONFIG_DIR, RAW_DATA_DIR
-from .util import read_json_to_dict
+from .paths import CONFIG_DIR, LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
+from .util import read_json_to_dict, apply_normalization, save_training_stats
 
 
 class BCIDataset(Dataset):
@@ -20,11 +20,9 @@ class BCIDataset(Dataset):
         csv_file,
         base_path: Path | str,
         split: str,
-        task_type: str = "MI",
+        task_type: str,
         label_mapping: Optional[Dict[str, int]] = None,
-        training_stats: Optional[Dict[str, torch.Tensor | None]] = None,
         num_channels: int = 8,
-        raw: bool = True,
     ):
         # Convert base_path to Path object if it's a string
         if isinstance(base_path, str):
@@ -50,9 +48,6 @@ class BCIDataset(Dataset):
             num_trials, num_channels, self.sequence_length, dtype=torch.float32
         )
         self.labels = torch.empty(num_trials, dtype=torch.long)
-
-        # For calculating training statistics
-        training_data_list = []
 
         for i, (idx, row) in tqdm(enumerate(self.metadata.iterrows())):
             # Path to the EEG data file
@@ -81,10 +76,6 @@ class BCIDataset(Dataset):
             # uncomment the line below and comment the one above to include all 18 columns
             # trial_data = eeg_data.loc[start_idx:end_idx-1].values
 
-            # Store raw training data for statistics calculation
-            if self.split == "train":
-                training_data_list.append(trial_data)
-
             # Convert to tensor
             tensor_data = torch.tensor(trial_data, dtype=torch.float32)
             self.tensor_data[i] = tensor_data
@@ -95,33 +86,6 @@ class BCIDataset(Dataset):
                 label_int = self.label_mapping[label_str]
                 self.labels[i] = label_int
 
-        # Calculate or use provided training statistics
-        if training_stats is not None:
-            self.training_mean = training_stats["mean"]
-            self.training_std = training_stats["std"]
-        else:
-            # Calculate training statistics
-            if training_data_list:
-                # Stack all training data: (n_trials, sequence_length, n_channels)
-                training_data = torch.tensor(
-                    np.array(training_data_list), dtype=torch.float32
-                )
-
-                # Calculate mean and std across trials and time points for each channel
-                # Shape: (n_channels,)
-                self.training_mean = training_data.mean(dim=(0, 2))
-                self.training_std = training_data.std(dim=(0, 2))
-
-                # Prevent division by zero
-                self.training_std = torch.clamp(self.training_std, min=1e-8)
-            else:
-                # Fallback if no training data
-                self.training_mean = torch.zeros(8)
-                self.training_std = torch.ones(8)
-
-        # preprocess data
-        self.tensor_data = self.preprocess(self.tensor_data)
-
     def __len__(self):
         return len(self.tensor_data)
 
@@ -131,25 +95,12 @@ class BCIDataset(Dataset):
         else:
             return self.tensor_data[idx], self.labels[idx]
 
-    def preprocess(self, eeg_data):
-        # Apply preprocessing steps here (filtering, normalization, etc.)
-        # This will be different for MI and SSVEP
 
-        # normalize data
-        normalized_data = (
-            eeg_data - self.training_mean[:, None]  # type: ignore
-        ) / self.training_std[:, None]  # type: ignore
-        return normalized_data
-
-    def get_training_stats(self):
-        """Return the training statistics for saving/reuse."""
-        return {"mean": self.training_mean, "std": self.training_std}
-
-
-def load_data(
+def load_raw_data(
     base_path: str | Path,
     task_type: str,
     label_mapping: Optional[Dict[str, int]] = None,
+    normalize: bool = False,
 ) -> Tuple[BCIDataset, BCIDataset, BCIDataset]:
     """
     Loads the train, val, test data for the given {task_type} inside the given {base_path}
@@ -160,17 +111,17 @@ def load_data(
         a tuple of BCIDataset in the order (train, val, test)
     """
 
+    # Convert base_path to Path object if it's a string
+    if isinstance(base_path, str):
+        base_path = Path(base_path)
+
     train = BCIDataset(
         csv_file="train.csv",
         base_path=base_path,
         task_type=task_type,
         split="train",
         label_mapping=label_mapping,
-        training_stats=None,
     )
-
-    # Get the calculated training statistics
-    training_stats = train.get_training_stats()
 
     val = BCIDataset(
         csv_file="validation.csv",
@@ -178,7 +129,6 @@ def load_data(
         task_type=task_type,
         split="validation",
         label_mapping=label_mapping,
-        training_stats=training_stats,
     )
     test = BCIDataset(
         csv_file="test.csv",
@@ -186,25 +136,66 @@ def load_data(
         task_type=task_type,
         split="test",
         label_mapping=label_mapping,
-        training_stats=training_stats,
     )
 
     return train, val, test
 
 
+def load_processed_data(
+    processed_data_dir: str | Path,
+    task_type: str,
+    normalize: bool = True,
+) -> Tuple[TensorDataset, TensorDataset]:
+    # Convert base_path to Path object if it's a string
+    if isinstance(processed_data_dir, str):
+        processed_data_dir = Path(processed_data_dir)
+
+    data_path = processed_data_dir / task_type
+
+    train_data = np.load(data_path / "train_data.npy")
+    train_labels = np.load(data_path / "train_labels.npy")
+
+    val_data = np.load(data_path / "validation_data.npy")
+    val_labels = np.load(data_path / "validation_labels.npy")
+
+    if normalize:
+        training_means = train_data.mean((0, 2))
+        training_stds = train_data.std((0, 2))
+
+        save_training_stats(
+            {"mean": training_means, "std": training_stds},
+            TRAINING_STATS_PATH / f"{task_type.lower()}_stats.pt",
+        )
+
+        train_data = apply_normalization(train_data, training_means, training_stds)
+        val_data = apply_normalization(val_data, training_means, training_stds)
+
+    train_dataset = create_tensor_dataset(train_data, train_labels)
+    val_dataset = create_tensor_dataset(val_data, val_labels)
+
+    return train_dataset, val_dataset
+
+
+def create_tensor_dataset(data: np.ndarray, labels: np.ndarray):
+    tensor_data = torch.from_numpy(data).float()
+    tesnor_labels = torch.from_numpy(labels).long()
+
+    return TensorDataset(tensor_data, tesnor_labels)
+
+
 def main():
     # This is what I do for reproducability
-    label_mapping = read_json_to_dict(CONFIG_DIR / "label_mapping.json")
+    label_mapping = read_json_to_dict(LABEL_MAPPING_PATH)
 
     # You can just use this to work with the data
     # label_mapping = {"Left": 0, "Right": 1, "Forward": 2, "Backward": 3}
 
     # Example of how to load the data using load_data
-    train_mi, val_mi, test_mi = load_data(
+    train_mi, val_mi, test_mi = load_raw_data(
         base_path=RAW_DATA_DIR, task_type="MI", label_mapping=label_mapping
     )
 
-    train_ssvep, val_ssvep, test_ssvep = load_data(
+    train_ssvep, val_ssvep, test_ssvep = load_raw_data(
         base_path=RAW_DATA_DIR, task_type="SSVEP", label_mapping=label_mapping
     )
 

@@ -50,9 +50,9 @@ def save_model(
     )
 
 
-def normalize(x, mean, std):
+def apply_normalization(x, channel_means, channel_stds):
     # x: Tensor of shape (C, T) or (N, C, T)
-    return (x - mean[:, None]) / std[:, None]
+    return (x - channel_means[:, None]) / channel_stds[:, None]
 
 
 # Helper functions for managing training statistics

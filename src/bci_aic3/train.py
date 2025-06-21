@@ -17,13 +17,15 @@ from bci_aic3.config import (
     load_model_config,
     load_training_config,
 )
-from bci_aic3.data import load_data
+from bci_aic3.data import load_processed_data, load_raw_data
 from bci_aic3.models.eegnet import EEGNet
 from bci_aic3.paths import (
     CHECKPOINTS_DIR,
     CONFIG_DIR,
     LABEL_MAPPING_PATH,
+    MI_CONFIG_PATH,
     RAW_DATA_DIR,
+    SSVEP_CONFIG_PATH,
 )
 from bci_aic3.util import read_json_to_dict, rec_cpu_count
 
@@ -145,13 +147,13 @@ class BCILightningModule(LightningModule):
         return torch.softmax(outputs, dim=1)
 
 
-def create_data_loaders(
-    base_path: Path, task_type: str, batch_size: int, num_workers: int
+def create_raw_data_loaders(
+    base_path: str | Path, task_type: str, batch_size: int, num_workers: int
 ):
     label_mapping = read_json_to_dict(LABEL_MAPPING_PATH)
 
     # Loading the data
-    train, val, test = load_data(
+    train, val, test = load_raw_data(
         base_path=base_path, task_type=task_type, label_mapping=label_mapping
     )
 
@@ -182,6 +184,48 @@ def create_data_loaders(
     return train_loader, val_loader, test_loader
 
 
+def create_processed_data_loaders(
+    processed_data_dir: str | Path,
+    task_type: str,
+    batch_size: int,
+    num_workers: int,
+    normalize: bool = True,
+):
+    """
+    Creates PyTorch DataLoader objects for training and validation datasets from preprocessed data.
+    Args:
+        processed_data_dir (str | Path): Path to the directory containing the processed data.
+        task_type (str): The type of task (MI or SSVEP) for which the data is prepared.
+        batch_size (int): Number of samples per batch to load.
+        num_workers (int): Number of subprocesses to use for data loading.
+        normalize (bool, optional): Whether to normalize the data. Defaults to True.
+    Returns:
+        tuple[DataLoader, DataLoader]: A tuple containing the training and validation DataLoader objects.
+    """
+
+    train, val = load_processed_data(
+        processed_data_dir=processed_data_dir, task_type=task_type, normalize=normalize
+    )
+
+    train_loader = DataLoader(
+        train,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
+    )
+
+    val_loader = DataLoader(
+        val,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
+    )
+
+    return train_loader, val_loader
+
+
 def setup_callbacks(model_config):
     callbacks = [
         # Save best model based on F1 score (better for imbalanced classes)
@@ -190,7 +234,7 @@ def setup_callbacks(model_config):
             monitor="val_f1",
             mode="max",  # Higher F1 is better
             save_top_k=3,  # Keep top 3 models
-            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{epoch:02d}}-{{val_f1:.4f}}",
+            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
             save_last=True,  # Always save the last checkpoint
             verbose=True,
         ),
@@ -214,19 +258,25 @@ def main():
     # Argument parser for cli use
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file",
+        "--task_type",
         required=True,
-        help="Name of the config file in the config directory.",
+        help="Task type (MI or SSVEP).",
     )
     args = parser.parse_args()
 
-    model_config = load_model_config(CONFIG_DIR / args.config_file)
-    training_config = load_training_config(CONFIG_DIR / args.config_file)
+    config_path = None
+    if args.task_type.lower() == "mi":
+        config_path = MI_CONFIG_PATH
+    elif args.task_type.lower() == "ssvep":
+        config_path = SSVEP_CONFIG_PATH
+
+    model_config = load_model_config(config_path)
+    training_config = load_training_config(config_path)
 
     max_num_workers = rec_cpu_count()
 
     # Create data loaders
-    train_loader, val_loader, test_loader = create_data_loaders(
+    train_loader, val_loader, test_loader = create_raw_data_loaders(
         base_path=RAW_DATA_DIR,
         task_type=model_config.task_type,
         batch_size=training_config.batch_size,

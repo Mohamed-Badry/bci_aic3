@@ -17,6 +17,9 @@ PROJECT_ROOT = get_project_root()
 
 # configs
 CONFIG_DIR = PROJECT_ROOT / "configs"
+MI_CONFIG_PATH = CONFIG_DIR / "mi_config.yaml"
+SSVEP_CONFIG_PATH = CONFIG_DIR / "ssvep_config.yaml"
+
 LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
 REVERSE_LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
 
