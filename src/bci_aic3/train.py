@@ -1,39 +1,32 @@
 # src/train.py
 
 import argparse
-from pathlib import Path
-import torch
 import os
-from pytorch_lightning import seed_everything, LightningModule, Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from pytorch_lightning.loggers import TensorBoardLogger
+from pathlib import Path
+
+import torch
+import torchmetrics
+from pytorch_lightning import LightningModule, Trainer, seed_everything
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from torch import nn, optim
 from torch.utils.data import DataLoader
-import torchmetrics
 
-from bci_aic3.data import load_data
-from bci_aic3.models.simple_cnn import BCIModel
-from bci_aic3.models.eegnet import EEGNet
-from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
-from bci_aic3.paths import (
-    CHECKPOINTS_DIR,
-    RAW_DATA_DIR,
-    LABEL_MAPPING_PATH,
-    CONFIG_DIR,
-    SUBMISSIONS_DIR,
-)
 from bci_aic3.config import (
     ModelConfig,
     TrainingConfig,
     load_model_config,
     load_training_config,
 )
-
-
-# Code necessary to create reproducible runs
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-seed_everything(42, workers=True)
-torch.use_deterministic_algorithms(True, warn_only=True)
+from bci_aic3.data import load_data
+from bci_aic3.models.eegnet import EEGNet
+from bci_aic3.paths import (
+    CHECKPOINTS_DIR,
+    CONFIG_DIR,
+    LABEL_MAPPING_PATH,
+    RAW_DATA_DIR,
+    SUBMISSIONS_DIR,
+)
+from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
 
 
 class BCILightningModule(LightningModule):
@@ -50,7 +43,7 @@ class BCILightningModule(LightningModule):
         self.save_hyperparameters()  # Automatically saves all __init__ params
 
         self.model_config = model_config
-        # self.training_config = training_config
+        self.training_config = training_config
 
         # Model
         self.model = EEGNet(
@@ -83,7 +76,7 @@ class BCILightningModule(LightningModule):
 
     def forward(self, x):
         # Lightning calls this for inference
-        return self.model(x.transpose(1, 2))  # Your transpose logic
+        return self.model(x)  # Your transpose logic
 
     def training_step(self, batch, batch_idx):
         data, labels = batch
@@ -94,6 +87,8 @@ class BCILightningModule(LightningModule):
         # Metrics
         preds = torch.argmax(outputs, dim=1)
         self.train_accuracy(preds, labels)
+
+        self.train_f1(preds, labels)
 
         # Lightning automatically logs these
         self.log("train_f1", self.train_f1, on_step=True, on_epoch=True, prog_bar=True)
@@ -117,6 +112,8 @@ class BCILightningModule(LightningModule):
         preds = torch.argmax(outputs, dim=1)
         self.val_accuracy(preds, labels)
 
+        self.val_f1(preds, labels)
+
         # Lightning automatically logs these
         self.log("val_f1", self.val_f1, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
@@ -125,6 +122,22 @@ class BCILightningModule(LightningModule):
         )
 
         return loss
+
+    def configure_optimizers(self):
+        # TODO: Make this configurable via hyperparameters
+        optimizer = optim.Adam(self.parameters(), lr=self.training_config.learning_rate)
+
+        # TODO: Add learning rate scheduler if needed
+        # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5)
+        # return {
+        #     "optimizer": optimizer,
+        #     "lr_scheduler": {
+        #         "scheduler": scheduler,
+        #         "monitor": "val_loss",
+        #     },
+        # }
+
+        return optimizer
 
     def predict_step(self, batch, batch_idx):
         # For inference/prediction
@@ -159,16 +172,18 @@ def create_data_loaders(
         persistent_workers=True if num_workers > 0 else False,
     )
 
-    # TODO: Also return test_loader for final evaluation
-    # test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(
+        test,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        persistent_workers=True if num_workers > 0 else False,
+    )
 
-    return train_loader, val_loader
+    return train_loader, val_loader, test_loader
 
 
 def setup_callbacks(model_config):
-    """
-    TODO: Make callback configuration configurable via config files
-    """
     callbacks = [
         # Save best model based on F1 score (better for imbalanced classes)
         ModelCheckpoint(
@@ -192,6 +207,12 @@ def setup_callbacks(model_config):
 
 
 def main():
+    # Code necessary to create reproducible runs
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    seed_everything(42, workers=True)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+    # Argument parser for cli use
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file",
@@ -199,7 +220,6 @@ def main():
         help="Name of the config file in the config directory.",
     )
     args = parser.parse_args()
-    print(args)
 
     model_config = load_model_config(CONFIG_DIR / args.config_file)
     training_config = load_training_config(CONFIG_DIR / args.config_file)
@@ -207,12 +227,13 @@ def main():
     max_num_workers = rec_cpu_count()
 
     # Create data loaders
-    train_loader, val_loader = create_data_loaders(
+    train_loader, val_loader, test_loader = create_data_loaders(
         base_path=RAW_DATA_DIR,
         task_type=model_config.task_type,
         batch_size=training_config.batch_size,
         num_workers=max_num_workers,
     )
+    print("Loaded the data...")
 
     # Create Lightning module
     model = BCILightningModule(
@@ -223,14 +244,10 @@ def main():
     # Setup callbacks
     callbacks = setup_callbacks(model_config)
 
-    # Setup logger - TODO: Make configurable
-    logger = TensorBoardLogger("lightning_logs", name="bci_experiment")
-
     # Create trainer
     trainer = Trainer(
         max_epochs=training_config.epochs,
         callbacks=callbacks,
-        logger=logger,
         accelerator="auto",  # Automatically uses GPU if available
         devices="auto",  # Uses all available devices
         deterministic=True,  # For reproducibility
