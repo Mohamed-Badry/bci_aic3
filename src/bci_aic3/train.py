@@ -24,6 +24,7 @@ from bci_aic3.paths import (
     CONFIG_DIR,
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
+    PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
     SSVEP_CONFIG_PATH,
 )
@@ -276,11 +277,12 @@ def main():
     max_num_workers = rec_cpu_count()
 
     # Create data loaders
-    train_loader, val_loader, test_loader = create_raw_data_loaders(
-        base_path=RAW_DATA_DIR,
+    train_loader, val_loader = create_processed_data_loaders(
+        processed_data_dir=PROCESSED_DATA_DIR,
         task_type=model_config.task_type,
         batch_size=training_config.batch_size,
         num_workers=max_num_workers,
+        normalize=True,
     )
     print("Loaded the data...")
 
