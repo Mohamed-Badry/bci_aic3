@@ -1,10 +1,12 @@
 # src/util.py
 
-import os
 import json
-import torch
+import os
 from pathlib import Path
 from typing import Dict
+
+import torch
+from torch.nn.utils import parametrize
 
 
 def rec_cpu_count() -> int:
@@ -24,45 +26,32 @@ def read_json_to_dict(file_path) -> dict:
     return data
 
 
-#  refactor this to load from model directory path using weights only
-# def load_model(model_path, model_class, model_kwargs, device, optim, learning_rate):
-def load_model():
-    """Load model from model_dir_path."""
-    # model = model_class(**model_kwargs).to(device)
-    # optimizer = optim(model.parameters(), lr=learning_rate)
-
-    # checkpoint = torch.load(model_path, map_location=device)
-    # model.load_state_dict(checkpoint["model_state_dict"])
-    # optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-    # return model, optimizer
-    pass
-
-
-# refactor this so it saves models as weights only in given directory
-def save_model(
-    save_path: str | Path, epoch, model, optimizer, loss: float, f1_score: float
-):
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "loss": loss,
-            "f1_score": f1_score,
-        },
-        save_path,
-    )
-
-
-# implement this to save configs to the same path as the model
-def save_config():
-    pass
-
-
 def apply_normalization(x, channel_means, channel_stds):
     # x: Tensor of shape (C, T) or (N, C, T)
     return (x - channel_means[:, None]) / channel_stds[:, None]
+
+
+# Remove all parametrizations from the model (necessary to save as torchscript)
+def remove_parametrizations(model):
+    for name, module in model.named_modules():
+        if hasattr(module, "parametrizations"):
+            # Remove all parametrizations for this module
+            for param_name in list(module.parametrizations.keys()):
+                parametrize.remove_parametrizations(module, param_name)
+    return model
+
+
+# Save model as torchscript
+def save_model(save_path: Path, model) -> None:
+    remove_parametrizations(model)
+    scripted_model = torch.jit.script(model)
+    torch.jit.save(scripted_model, save_path)
+
+
+# Load torchscript model
+def load_model(model_path: Path) -> type[torch.nn.Module]:
+    loaded_model = torch.jit.load(model_path)
+    return loaded_model
 
 
 # Helper functions for managing training statistics

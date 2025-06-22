@@ -10,8 +10,8 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 from tqdm import tqdm
 
-from .paths import LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
-from .util import read_json_to_dict, apply_normalization, save_training_stats
+from bci_aic3.paths import LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
+from bci_aic3.util import read_json_to_dict, save_training_stats, apply_normalization
 
 
 class BCIDataset(Dataset):

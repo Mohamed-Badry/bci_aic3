@@ -20,8 +20,10 @@ CONFIG_DIR = PROJECT_ROOT / "configs"
 MI_CONFIG_PATH = CONFIG_DIR / "mi_config.yaml"
 SSVEP_CONFIG_PATH = CONFIG_DIR / "ssvep_config.yaml"
 
-LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping.json"
-REVERSE_LABEL_MAPPING_PATH = CONFIG_DIR / "reverse_label_mapping.json"
+LABEL_MAPPING_PATH = CONFIG_DIR / "label_mappings" / "label_mapping.json"
+REVERSE_LABEL_MAPPING_PATH = (
+    CONFIG_DIR / "label_mappings" / "reverse_label_mapping.json"
+)
 
 # training statistics
 TRAINING_STATS_PATH = PROJECT_ROOT / "training_stats"

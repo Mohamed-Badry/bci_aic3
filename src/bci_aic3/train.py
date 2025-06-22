@@ -43,7 +43,6 @@ class BCILightningModule(LightningModule):
         # scheduler_name: str = None,
     ):
         super().__init__()
-        self.save_hyperparameters()  # Automatically saves all __init__ params
 
         self.num_classes = num_classes
         self.num_channels = num_channels
@@ -232,12 +231,12 @@ def create_processed_data_loaders(
 
 def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
     callbacks = [
-        # Save best model based on F1 score (better for imbalanced classes)
+        # Save best model based on F1 score
         ModelCheckpoint(
             dirpath=CHECKPOINTS_DIR / model_config.task_type,
             monitor="val_f1",
             mode="max",  # Higher F1 is better
-            save_top_k=1,  # Keep top model
+            save_top_k=3,  # Keep top 3 models
             filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
             save_last=True,  # Always save the last checkpoint
             verbose=verbose,
@@ -254,7 +253,9 @@ def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
 
 
 def train_model(
-    config_path: Path, verbose: bool = True
+    model: type[nn.Module],
+    config_path: Path,
+    verbose: bool = True,
 ) -> Tuple[Trainer, BCILightningModule]:
     model_config = load_model_config(config_path)
     training_config = load_training_config(config_path)
@@ -270,8 +271,8 @@ def train_model(
     )
 
     # Create Lightning module
-    model = BCILightningModule(
-        model=EEGNet,
+    module = BCILightningModule(
+        model=model,
         num_classes=model_config.num_classes,
         num_channels=model_config.num_channels,
         sequence_length=model_config.new_sequence_length,
@@ -291,9 +292,9 @@ def train_model(
         log_every_n_steps=10,
     )
 
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(module, train_loader, val_loader)
 
-    return trainer, model
+    return trainer, module
 
 
 def main():
@@ -315,7 +316,7 @@ def main():
     config_path = None
     if task_type.upper() == "MI":
         config_path = MI_CONFIG_PATH
-    elif task_type == "SSVEP":
+    elif task_type.upper() == "SSVEP":
         config_path = SSVEP_CONFIG_PATH
     else:
         raise (
@@ -324,7 +325,7 @@ def main():
             )
         )
 
-    trainer, model = train_model(config_path=config_path, verbose=True)
+    trainer, model = train_model(model=EEGNet, config_path=config_path, verbose=True)
 
     # TODO: Save final model in custom format if needed
     # best_model_path = trainer.checkpoint_callback.best_model_path
