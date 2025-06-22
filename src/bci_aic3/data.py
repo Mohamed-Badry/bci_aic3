@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 from tqdm import tqdm
 
-from .paths import CONFIG_DIR, LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
+from .paths import LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
 from .util import read_json_to_dict, apply_normalization, save_training_stats
 
 
@@ -49,12 +49,15 @@ class BCIDataset(Dataset):
         )
         self.labels = torch.empty(num_trials, dtype=torch.long)
 
-        for i, (idx, row) in tqdm(enumerate(self.metadata.iterrows())):
+        # Precompute common part of the path
+        base_task_split = self.base_path / task_type / self.split
+
+        for i, (idx, row) in tqdm(
+            enumerate(self.metadata.iterrows()), total=num_trials
+        ):
             # Path to the EEG data file
             eeg_path = (
-                self.base_path
-                / row["task"]
-                / self.split
+                base_task_split
                 / row["subject_id"]
                 / str(row["trial_session"])
                 / "EEGdata.csv"

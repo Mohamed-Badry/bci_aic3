@@ -21,11 +21,9 @@ from bci_aic3.data import load_processed_data, load_raw_data
 from bci_aic3.models.eegnet import EEGNet
 from bci_aic3.paths import (
     CHECKPOINTS_DIR,
-    CONFIG_DIR,
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
     PROCESSED_DATA_DIR,
-    RAW_DATA_DIR,
     SSVEP_CONFIG_PATH,
 )
 from bci_aic3.util import read_json_to_dict, rec_cpu_count
