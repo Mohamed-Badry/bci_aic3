@@ -20,8 +20,8 @@ CONFIG_DIR = PROJECT_ROOT / "configs"
 MI_CONFIG_PATH = CONFIG_DIR / "mi_config.yaml"
 SSVEP_CONFIG_PATH = CONFIG_DIR / "ssvep_config.yaml"
 
-LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
-REVERSE_LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping_str_to_int.json"
+LABEL_MAPPING_PATH = CONFIG_DIR / "label_mapping.json"
+REVERSE_LABEL_MAPPING_PATH = CONFIG_DIR / "reverse_label_mapping.json"
 
 # training statistics
 TRAINING_STATS_PATH = PROJECT_ROOT / "training_stats"
@@ -31,8 +31,10 @@ DATA_DIR = PROJECT_ROOT / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
-# models
-MODELS_DIR = PROJECT_ROOT / "models"
+# model runs
+RUNS_DIR = PROJECT_ROOT / "run"
+MI_RUNS_DIR = RUNS_DIR / "MI"
+SSVEP_RUNS_DIR = RUNS_DIR / "SSVEP"
 
 # checkpoints
 CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"

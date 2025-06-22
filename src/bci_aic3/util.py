@@ -63,4 +63,4 @@ def save_training_stats(stats: Dict[str, torch.Tensor | None], save_path: Path):
 
 def load_training_stats(load_path: Path) -> Dict[str, torch.Tensor]:
     """Load training statistics from disk."""
-    return torch.load(load_path)
+    return torch.load(load_path, weights_only=False)

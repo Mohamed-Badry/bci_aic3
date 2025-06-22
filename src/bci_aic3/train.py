@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader
 
 from bci_aic3.config import (
     ModelConfig,
-    TrainingConfig,
     load_model_config,
     load_training_config,
 )
@@ -32,8 +31,10 @@ from bci_aic3.util import read_json_to_dict, rec_cpu_count
 class BCILightningModule(LightningModule):
     def __init__(
         self,
-        model_config: ModelConfig,
-        training_config: TrainingConfig,
+        num_classes: int,
+        num_channels: int,
+        sequence_length: int,
+        lr: float,
         # TODO: Add more hyperparameters from config
         # optimizer_name: str = "adam",
         # weight_decay: float = 0.0,
@@ -42,14 +43,16 @@ class BCILightningModule(LightningModule):
         super().__init__()
         self.save_hyperparameters()  # Automatically saves all __init__ params
 
-        self.model_config = model_config
-        self.training_config = training_config
+        self.num_classes = num_classes
+        self.num_channels = num_channels
+        self.sequence_length = sequence_length
+        self.lr = lr
 
         # Model
         self.model = EEGNet(
-            self.model_config.num_classes,
-            self.model_config.num_channels,
-            self.model_config.sequence_length,
+            self.num_classes,
+            self.num_channels,
+            self.sequence_length,
         )
 
         # Loss function
@@ -57,20 +60,20 @@ class BCILightningModule(LightningModule):
 
         # Metrics - Lightning handles device placement automatically
         self.train_accuracy = torchmetrics.Accuracy(
-            task="multiclass", num_classes=self.model_config.num_classes
+            task="multiclass", num_classes=self.num_classes
         )
         self.val_accuracy = torchmetrics.Accuracy(
-            task="multiclass", num_classes=self.model_config.num_classes
+            task="multiclass", num_classes=self.num_classes
         )
 
         self.train_f1 = torchmetrics.F1Score(
             task="multiclass",
-            num_classes=self.model_config.num_classes,
+            num_classes=self.num_classes,
             average="macro",
         )
         self.val_f1 = torchmetrics.F1Score(
             task="multiclass",
-            num_classes=self.model_config.num_classes,
+            num_classes=self.num_classes,
             average="macro",
         )
 
@@ -125,7 +128,7 @@ class BCILightningModule(LightningModule):
 
     def configure_optimizers(self):
         # TODO: Make this configurable via hyperparameters
-        optimizer = optim.Adam(self.parameters(), lr=self.training_config.learning_rate)
+        optimizer = optim.Adam(self.parameters(), lr=self.lr)
 
         # TODO: Add learning rate scheduler if needed
         # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5)
@@ -225,24 +228,24 @@ def create_processed_data_loaders(
     return train_loader, val_loader
 
 
-def setup_callbacks(model_config):
+def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
     callbacks = [
         # Save best model based on F1 score (better for imbalanced classes)
         ModelCheckpoint(
             dirpath=CHECKPOINTS_DIR / model_config.task_type,
             monitor="val_f1",
             mode="max",  # Higher F1 is better
-            save_top_k=3,  # Keep top 3 models
+            save_top_k=1,  # Keep top model
             filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
             save_last=True,  # Always save the last checkpoint
-            verbose=True,
+            verbose=verbose,
         ),
         # Early stopping to prevent overfitting
         EarlyStopping(
             monitor="val_loss",
             mode="min",
             patience=10,
-            verbose=True,
+            verbose=verbose,
         ),
     ]
     return callbacks
@@ -286,8 +289,10 @@ def main():
 
     # Create Lightning module
     model = BCILightningModule(
-        model_config=model_config,
-        training_config=training_config,
+        num_classes=model_config.num_classes,
+        num_channels=model_config.num_channels,
+        sequence_length=model_config.new_sequence_length,
+        lr=training_config.learning_rate,
     )
 
     # Setup callbacks

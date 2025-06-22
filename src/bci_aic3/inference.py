@@ -8,7 +8,7 @@ from bci_aic3.models.eegnet import EEGNet
 from bci_aic3.paths import (
     CONFIG_DIR,
     LABEL_MAPPING_PATH,
-    MODELS_DIR,
+    RUNS_DIR,
     PROJECT_ROOT,
     RAW_DATA_DIR,
     REVERSE_LABEL_MAPPING_PATH,
@@ -18,25 +18,9 @@ from bci_aic3.util import load_model, read_json_to_dict
 
 def load_models(ssvep_config, mi_config):
     """Load both models."""
-    ssvep_model = load_model(
-        model_path=ssvep_config["path"],
-        model_class=ssvep_config["class"],
-        model_kwargs=ssvep_config["kwargs"],
-        device=ssvep_config.get(
-            "device", "cuda" if torch.cuda.is_available() else "cpu"
-        ),
-        optim=ssvep_config.get("optim"),
-        learning_rate=ssvep_config.get("lr"),
-    )
+    ssvep_model = load_model()
 
-    mi_model = load_model(
-        model_path=mi_config["path"],
-        model_class=mi_config["class"],
-        model_kwargs=mi_config["kwargs"],
-        device=mi_config.get("device", "cuda" if torch.cuda.is_available() else "cpu"),
-        optim=mi_config.get("optim"),
-        learning_rate=mi_config.get("lr"),
-    )
+    mi_model = load_model()
 
     return ssvep_model, mi_model
 

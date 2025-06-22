@@ -11,12 +11,22 @@ class ModelConfig:
     num_classes: int
     sequence_length: int
     num_channels: int
+    new_sequence_length: (
+        int  # this is the sequence length calculated after preprocessing
+    )
 
 
 def load_model_config(path):
     """Load model config from YAML file."""
     with open(path) as f:
         config_dict = yaml.safe_load(f)
+        processing_config = config_dict["preprocessing"]
+
+        config_dict["model"]["new_sequence_length"] = int(
+            (processing_config["tmax"] - processing_config["tmin"])
+            * processing_config["sfreq"]
+        )
+
     return ModelConfig(**config_dict["model"])
 
 
