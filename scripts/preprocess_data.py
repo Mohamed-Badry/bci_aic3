@@ -27,6 +27,12 @@ def main():
         config_path = MI_CONFIG_PATH
     elif task_type == "SSVEP":
         config_path = SSVEP_CONFIG_PATH
+    else:
+        raise (
+            ValueError(
+                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
+            )
+        )
 
     processing_config = load_processing_config(config_path)
     label_mapping = read_json_to_dict(LABEL_MAPPING_PATH)

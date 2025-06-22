@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+from typing import Tuple
 
 import torch
 import torchmetrics
@@ -31,6 +32,7 @@ from bci_aic3.util import read_json_to_dict, rec_cpu_count
 class BCILightningModule(LightningModule):
     def __init__(
         self,
+        model: type[nn.Module],
         num_classes: int,
         num_channels: int,
         sequence_length: int,
@@ -49,7 +51,7 @@ class BCILightningModule(LightningModule):
         self.lr = lr
 
         # Model
-        self.model = EEGNet(
+        self.model = model(
             self.num_classes,
             self.num_channels,
             self.sequence_length,
@@ -251,6 +253,49 @@ def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
     return callbacks
 
 
+def train_model(
+    config_path: Path, verbose: bool = True
+) -> Tuple[Trainer, BCILightningModule]:
+    model_config = load_model_config(config_path)
+    training_config = load_training_config(config_path)
+
+    max_num_workers = rec_cpu_count()
+
+    # Create data loaders
+    train_loader, val_loader = create_processed_data_loaders(
+        processed_data_dir=PROCESSED_DATA_DIR,
+        task_type=model_config.task_type,
+        batch_size=training_config.batch_size,
+        num_workers=max_num_workers,
+    )
+
+    # Create Lightning module
+    model = BCILightningModule(
+        model=EEGNet,
+        num_classes=model_config.num_classes,
+        num_channels=model_config.num_channels,
+        sequence_length=model_config.new_sequence_length,
+        lr=training_config.learning_rate,
+    )
+
+    # Setup callbacks
+    callbacks = setup_callbacks(model_config, verbose=verbose)
+
+    # Create trainer
+    trainer = Trainer(
+        max_epochs=training_config.epochs,
+        callbacks=callbacks,
+        accelerator="auto",  # Automatically uses GPU if available
+        devices="auto",  # Uses all available devices
+        deterministic=True,  # For reproducibility
+        log_every_n_steps=10,
+    )
+
+    trainer.fit(model, train_loader, val_loader)
+
+    return trainer, model
+
+
 def main():
     # Code necessary to create reproducible runs
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -265,51 +310,21 @@ def main():
         help="Task type (MI or SSVEP).",
     )
     args = parser.parse_args()
+    task_type = args.task_type
 
     config_path = None
-    if args.task_type.lower() == "mi":
+    if task_type.upper() == "MI":
         config_path = MI_CONFIG_PATH
-    elif args.task_type.lower() == "ssvep":
+    elif task_type == "SSVEP":
         config_path = SSVEP_CONFIG_PATH
+    else:
+        raise (
+            ValueError(
+                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
+            )
+        )
 
-    model_config = load_model_config(config_path)
-    training_config = load_training_config(config_path)
-
-    max_num_workers = rec_cpu_count()
-
-    # Create data loaders
-    train_loader, val_loader = create_processed_data_loaders(
-        processed_data_dir=PROCESSED_DATA_DIR,
-        task_type=model_config.task_type,
-        batch_size=training_config.batch_size,
-        num_workers=max_num_workers,
-        normalize=True,
-    )
-    print("Loaded the data...")
-
-    # Create Lightning module
-    model = BCILightningModule(
-        num_classes=model_config.num_classes,
-        num_channels=model_config.num_channels,
-        sequence_length=model_config.new_sequence_length,
-        lr=training_config.learning_rate,
-    )
-
-    # Setup callbacks
-    callbacks = setup_callbacks(model_config)
-
-    # Create trainer
-    trainer = Trainer(
-        max_epochs=training_config.epochs,
-        callbacks=callbacks,
-        accelerator="auto",  # Automatically uses GPU if available
-        devices="auto",  # Uses all available devices
-        deterministic=True,  # For reproducibility
-        log_every_n_steps=10,
-    )
-
-    # Train the model
-    trainer.fit(model, train_loader, val_loader)
+    trainer, model = train_model(config_path=config_path, verbose=True)
 
     # TODO: Save final model in custom format if needed
     # best_model_path = trainer.checkpoint_callback.best_model_path
