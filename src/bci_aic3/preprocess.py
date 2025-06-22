@@ -7,8 +7,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from bci_aic3.config import ProcessingConfig, load_processing_config
-from bci_aic3.data import BCIDataset, load_raw_data
-from bci_aic3.paths import CONFIG_DIR, PROCESSED_DATA_DIR, RAW_DATA_DIR
+from bci_aic3.data import BCIDataset
+from bci_aic3.paths import CONFIG_DIR, PROCESSED_DATA_DIR
 
 
 def apply_notch_filter(data: np.ndarray, sfreq: float, notch_freq: float) -> np.ndarray:
@@ -197,7 +197,7 @@ def create_mne_epochs(
 
 def main():
     processing_settings = load_processing_config(CONFIG_DIR / "mi_config.yaml")
-    processing_settings
+    print(processing_settings)
 
 
 if __name__ == "__main__":
