@@ -1,8 +1,10 @@
 # src/train.py
 
 import argparse
+from datetime import datetime
 import os
 from pathlib import Path
+import shutil
 from typing import Tuple
 
 import torch
@@ -23,10 +25,12 @@ from bci_aic3.paths import (
     CHECKPOINTS_DIR,
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
+    MI_RUNS_DIR,
     PROCESSED_DATA_DIR,
     SSVEP_CONFIG_PATH,
+    SSVEP_RUNS_DIR,
 )
-from bci_aic3.util import read_json_to_dict, rec_cpu_count
+from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
 
 
 class BCILightningModule(LightningModule):
@@ -252,6 +256,7 @@ def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
     return callbacks
 
 
+# TODO: Allow for model kwargs based on architecture
 def train_model(
     model: type[nn.Module],
     config_path: Path,
@@ -311,22 +316,40 @@ def main():
         help="Task type (MI or SSVEP).",
     )
     args = parser.parse_args()
-    task_type = args.task_type
+    task_type = args.task_type.upper()
 
     config_path = None
-    if task_type.upper() == "MI":
+    save_path = None
+    if task_type == "MI":
         config_path = MI_CONFIG_PATH
-    elif task_type.upper() == "SSVEP":
+        save_path = MI_RUNS_DIR
+    elif task_type == "SSVEP":
         config_path = SSVEP_CONFIG_PATH
+        save_path = SSVEP_RUNS_DIR
     else:
         raise (
             ValueError(
-                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
+                f"Invalid task_type: {args.task_type}.\nValid task_type (MI) or (SSVEP)"
             )
         )
 
-    trainer, model = train_model(model=EEGNet, config_path=config_path, verbose=True)
+    # model to use
+    model = EEGNet
+    model_name = model.__name__
 
+    trainer, model = train_model(model=model, config_path=config_path, verbose=True)
+
+    # Create unique directory to save model and config
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_folder_name = f"{model_name}-{timestamp}"
+    save_dir = save_path / run_folder_name
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Created unique directory for this run: {save_dir}")
+
+    shutil.copy(config_path, save_dir / "config.yaml")
+    print(f"Saved config to {save_dir / 'config.yaml'}")
+
+    save_model(model=model, save_path=save_dir / "weights.pt")
     # TODO: Save final model in custom format if needed
     # best_model_path = trainer.checkpoint_callback.best_model_path
     # model = BCILightningModule.load_from_checkpoint(best_model_path)

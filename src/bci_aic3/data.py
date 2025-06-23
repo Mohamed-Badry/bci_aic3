@@ -11,7 +11,12 @@ from torch.utils.data import Dataset, TensorDataset
 from tqdm import tqdm
 
 from bci_aic3.paths import LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
-from bci_aic3.util import read_json_to_dict, save_training_stats, apply_normalization
+from bci_aic3.util import (
+    ensure_base_path,
+    read_json_to_dict,
+    save_training_stats,
+    apply_normalization,
+)
 
 
 class BCIDataset(Dataset):
@@ -24,9 +29,7 @@ class BCIDataset(Dataset):
         label_mapping: Optional[Dict[str, int]] = None,
         num_channels: int = 8,
     ):
-        # Convert base_path to Path object if it's a string
-        if isinstance(base_path, str):
-            base_path = Path(base_path)
+        base_path = ensure_base_path(base_path)
 
         # Filter the main dataframe for the specific task (MI or SSVEP)
         self.metadata = pd.read_csv(os.path.join(base_path, csv_file))

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -80,7 +79,9 @@ def create_inference_data_loader(
     return test_loader
 
 
-def predict_batch(model, data_loader, device):
+def predict_batch(
+    model, data_loader, device="cuda" if torch.cuda.is_available() else "cpu"
+):
     """Make predictions on a batch of data."""
     model.eval()
     predictions = []

@@ -8,8 +8,8 @@ model:
 
 # training config
 training:
-  epochs: 1
-  batch_size: 128
+  epochs: 100
+  batch_size: 32
   learning_rate: 0.001
 
 # preprocessing settings

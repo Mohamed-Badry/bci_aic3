@@ -8,7 +8,7 @@ model:
 
 # training config
 training:
-  epochs: 100
+  epochs: 1
   batch_size: 32
   learning_rate: 0.001
 
