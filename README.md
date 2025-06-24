@@ -50,7 +50,6 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 │       ├── MI/
 │       ├── README.md
 │       ├── SSVEP/
-│       ├── mtcaic3.zip
 │       ├── sample_submission.csv
 │       ├── test.csv
 │       ├── train.csv
@@ -187,7 +186,6 @@ data/
     ├── MI/
     ├── README.md
     ├── SSVEP/
-    ├── mtcaic3.zip
     ├── sample_submission.csv
     ├── test.csv
     ├── train.csv
