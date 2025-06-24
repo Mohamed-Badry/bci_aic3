@@ -11,7 +11,7 @@ The goal of this code is to serve as a full pipeline for data loading, preproces
 
 ****
 
-### Problem Statement
+## Problem Statement
 
 Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State Visual Evoked Potential (SSVEP), the goal is to classify the signal to the correct class.
 
@@ -21,7 +21,7 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 
 ****
 
-### Repository Structure
+## Repository Structure
 
 ```
 ├── LICENSE
@@ -118,9 +118,9 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 ```
 
 
-### Methodology
+## Methodology
 
-- #### Preprocessing
+- ### Preprocessing
     TODO: filtering, ffts, down-sampling, etc...
 
     - Notch filtering at 50Hz.
@@ -128,14 +128,14 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
     - Using the first second as a baseline and subtracting its mean from the data.
     - Cropping the range [`tmin`, `tmax`].
 
-- #### Architecture 
+- ### Architecture 
     TODO: EEGNet
 
-- #### Evaluation
+- ### Evaluation
     TODO: Average F1 score of 2 models 
 
 
-### Environment setup
+## Environment setup
 
 If you don't have `uv` I reccommend installing it as that'll save you a lot of trouble and it's just a one line install.
 
@@ -170,7 +170,7 @@ uv sync
 ****
 
 
-### Usage
+## Usage
 
 #### TODO: Script to run it all end to end.
 
@@ -203,7 +203,7 @@ Training the models creates unique directories in the `run/` directory with each
 
 Note: The unique folders have their names formatted like so `run/{TASK_TYPE}/EEGNet-f1-{val_f1}-{timestamp}` and the `weights.pt` file stored in them is saved as torchscript, which means it should be loaded using `torch.jit.load()` if it were to be used outside this project, and it can be loaded to other torch runtimes that support torchscript too.
 
-##### Config File Structure
+#### Config File Structure
 ```yaml
 # model config
 model:
