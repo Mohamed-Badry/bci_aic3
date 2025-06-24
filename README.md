@@ -34,7 +34,7 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 │   └── ssvep_config.yaml
 │
 ├── data                            # data directory structure (not uploaded to github)
-│   ├── interim
+│   ├── interim/                    # not used yet but could use for intermediary data saving
 │   ├── processed                   # processed data directory (.npy for fast loading)
 │   │   ├── MI
 │   │   │   ├── train_data.npy
@@ -47,9 +47,9 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 │   │       ├── validation_data.npy
 │   │       └── validation_labels.npy
 │   └── raw
-│       ├── MI
+│       ├── MI/
 │       ├── README.md
-│       ├── SSVEP
+│       ├── SSVEP/
 │       ├── mtcaic3.zip
 │       ├── sample_submission.csv
 │       ├── test.csv
@@ -95,7 +95,7 @@ Given raw EEG signal readings from two tasks Motor-Imagery (MI) and Steady-State
 │       ├── config.py               # config definitions and config loading
 │       ├── data.py                 # BCIDataset, and data loading
 │       ├── inference.py            # inference methods and functions
-│       ├── models                  # torch models 
+│       ├── models/                 # torch models 
 │       ├── paths.py                # paths defined with respect to PROJECT_ROOT
 │       ├── preprocess.py           # data preprocessing, filters, cropping
 │       ├── train.py                # pytorch lightning trainer and lightning
@@ -179,6 +179,20 @@ uv pip install . --no-deps
 
 #### TODO: Script to run it all end to end.
 
+Note: Make sure you have the data in the `data/raw/` directory with the following structure.
+
+```
+data/
+└──raw/
+    ├── MI/
+    ├── README.md
+    ├── SSVEP/
+    ├── mtcaic3.zip
+    ├── sample_submission.csv
+    ├── test.csv
+    ├── train.csv
+    └── validation.csv
+```
 
 ### Preprocessing
 
