@@ -168,6 +168,9 @@ uv sync
 
 #### TODO: Script to run it all end to end.
 
+
+### Preprocessing
+
 To preprocess the MI training and validation data 
 ```
 uv run scripts/preprocess_data.py --task_type MI 
@@ -181,6 +184,9 @@ uv run scripts/preprocess_data.py --task_type SSVEP
 These scripts both apply the `preprocessing_pipeline()` function defined in `src/bci_aic3/preprocess.py` (subject to change) to the training and validation data using parameters defined in the `configs/` file, and store them in the `data/processed/` directory.
 
 ****
+
+### Training
+
 To train the MI model.
 ```
 uv run -m bci_aic3.train --task_type MI
