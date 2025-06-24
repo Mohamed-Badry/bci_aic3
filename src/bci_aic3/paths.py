@@ -3,28 +3,43 @@
 from pathlib import Path
 
 
-def get_project_root(target_folder: str = "src") -> Path:
+def get_project_root():
     """
-    Simplified version that just goes up until it finds a target folder.
+    Finds the project root. (The extra cases are to handle kaggle environments)
 
-    Args:
-        target_folder: Name of the folder to look for (default: "src")
+    This function is designed for the Kaggle environment where a project
+    repository is cloned into the `/kaggle/working` directory. It first checks
+    if the current directory is the project root, and if not, it searches
+    one level deep in the subdirectories.
+
+    Returns:
+        Path: The path to the project root.
+                      Falls back to the current working directory if no markers are found.
     """
-    # Try __file__ first if available
-    try:
-        start_path = Path(__file__).resolve().parent
-    except NameError:
-        # Fallback to current working directory
-        start_path = Path.cwd()
+    current_path = Path.cwd()  # In Kaggle, this is typically /kaggle/working
 
-    # Go up the directory tree until we find the target folder
-    current = start_path
-    for parent in [current] + list(current.parents):
-        if (parent / target_folder).exists():
-            return parent
+    # Define the markers that identify the root of your project
+    project_markers = ["pyproject.toml", "src", ".git", "uv.lock"]
 
-    # If not found, return the starting directory
-    return start_path
+    # Case 1: The current directory is the project root
+    for marker in project_markers:
+        if (current_path / marker).exists():
+            return current_path
+
+    # Case 2: The project is in an immediate subdirectory (the common case)
+    # e.g., current_path is /kaggle/working, project is /kaggle/working/repo_name
+    for child in current_path.iterdir():
+        if child.is_dir():
+            for marker in project_markers:
+                if (child / marker).exists():
+                    # This subdirectory is the project root
+                    return child
+
+    # Fallback: If no project structure is found, return the starting directory.
+    print(
+        f"Warning: Could not find project root markers {project_markers}. Falling back to {current_path}."
+    )
+    return current_path
 
 
 PROJECT_ROOT = get_project_root()
