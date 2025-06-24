@@ -151,10 +151,14 @@ def preprocessing_pipeline(
         data=data, settings=processing_config
     )
 
-    processed_data_path = PROCESSED_DATA_DIR / task_type.upper() / f"{split}_data.npy"
-    processed_labels_path = (
-        PROCESSED_DATA_DIR / task_type.upper() / f"{split}_labels.npy"
-    )
+    # Define the directory where the files will be saved
+    output_dir = PROCESSED_DATA_DIR / task_type.upper()
+
+    # Create the directory if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    processed_data_path = output_dir / f"{split}_data.npy"
+    processed_labels_path = output_dir / f"{split}_labels.npy"
 
     np.save(processed_data_path, processed_data)
     print(f"Processed data successfully saved at: {processed_data_path}")
