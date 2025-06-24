@@ -197,7 +197,7 @@ And the same goes for SSVEP
 uv run -m bci_aic3.train --task_type SSVEP
 ```
 
-Both the preprocessing and training use a predifined config file path defined in `src/bci_aic3/paths.py` and the default is located in `configs/` which you can edit before each run.
+Both the preprocessing and training use a predefined config file path defined in `src/bci_aic3/paths.py` and the default is located in `configs/` which you can edit before each run.
 
 Training the models creates unique directories in the `run/` directory with each one storing the model checkpoints and when the training is finished the config file and final weights are saved to the same directory. This allows for easy tracking of models and which config file generated them. 
 
