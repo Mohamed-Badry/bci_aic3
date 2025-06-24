@@ -157,9 +157,20 @@ git clone https://github.com/Mohamed-Badry/bci_aic3.git
 cd bci_aic3
 ```
 
-And finally to get your `.venv` set up 
-```
+And to get your `.venv` set up 
+```sh
 uv sync
+```
+
+Finally to install this package and be able to import from it:
+```sh
+# run this if you want to install the package in editable mode
+uv pip install -e .
+```
+
+```sh
+# run this if you want to install it in non-editable mode
+uv pip install . --no-deps
 ```
 ****
 
@@ -172,12 +183,12 @@ uv sync
 ### Preprocessing
 
 To preprocess the MI training and validation data 
-```
+```sh
 uv run scripts/preprocess_data.py --task_type MI 
 ```
 
 The same goes for SSVEP
-```
+```sh
 uv run scripts/preprocess_data.py --task_type SSVEP 
 ```
 
@@ -188,12 +199,12 @@ These scripts both apply the `preprocessing_pipeline()` function defined in `src
 ### Training
 
 To train the MI model.
-```
+```sh
 uv run -m bci_aic3.train --task_type MI
 ```
 
 And the same goes for SSVEP
-```
+```sh
 uv run -m bci_aic3.train --task_type SSVEP
 ```
 
