@@ -22,7 +22,6 @@ from bci_aic3.config import (
 from bci_aic3.data import load_processed_data, load_raw_data
 from bci_aic3.models.eegnet import EEGNet
 from bci_aic3.paths import (
-    CHECKPOINTS_DIR,
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
     MI_RUNS_DIR,
@@ -233,11 +232,13 @@ def create_processed_data_loaders(
     return train_loader, val_loader
 
 
-def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
+def setup_callbacks(
+    model_config: ModelConfig, checkpoints_path: Path, verbose: bool = False
+):
     callbacks = [
         # Save best model based on F1 score
         ModelCheckpoint(
-            dirpath=CHECKPOINTS_DIR / model_config.task_type,
+            dirpath=checkpoints_path,
             monitor="val_f1",
             mode="max",  # Higher F1 is better
             save_top_k=3,  # Keep top 3 models
@@ -260,6 +261,7 @@ def setup_callbacks(model_config: ModelConfig, verbose: bool = False):
 def train_model(
     model: type[nn.Module],
     config_path: Path,
+    checkpoints_path: Path,
     verbose: bool = True,
 ) -> Tuple[Trainer, BCILightningModule]:
     model_config = load_model_config(config_path)
@@ -285,7 +287,9 @@ def train_model(
     )
 
     # Setup callbacks
-    callbacks = setup_callbacks(model_config, verbose=verbose)
+    callbacks = setup_callbacks(
+        model_config, checkpoints_path=checkpoints_path, verbose=verbose
+    )
 
     # Create trainer
     trainer = Trainer(
@@ -337,26 +341,42 @@ def main():
     model = EEGNet
     model_name = model.__name__
 
-    trainer, model = train_model(model=model, config_path=config_path, verbose=True)
-
-    # Create unique directory to save model and config
+    # Create a unique temporary directory first, using only the timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_folder_name = f"{model_name}-{timestamp}"
-    save_dir = save_path / run_folder_name
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"Created unique directory for this run: {save_dir}")
+    temp_run_folder_name = f"{model_name}-{timestamp}-inprogress"
+    temp_run_save_dir = save_path / temp_run_folder_name
 
-    shutil.copy(config_path, save_dir / "config.yaml")
-    print(f"Saved config to {save_dir / 'config.yaml'}")
+    # Ensure directory and a subdirectory for checkpoints exist
+    checkpoints_subdir = temp_run_save_dir / "checkpoints"
+    os.makedirs(checkpoints_subdir, exist_ok=True)
+    print(f"Created temporary run directory: {temp_run_save_dir}")
 
-    save_model(model=model, save_path=save_dir / "weights.pt")
-    # TODO: Save final model in custom format if needed
-    # best_model_path = trainer.checkpoint_callback.best_model_path
-    # model = BCILightningModule.load_from_checkpoint(best_model_path)
-    # save_model(model.model, MODEL_DIR / "")
+    trainer, model = train_model(
+        model=model,
+        config_path=config_path,
+        checkpoints_path=checkpoints_subdir,
+        verbose=True,
+    )
 
-    # print("Training completed!")
-    # print(f"Best model saved at: {trainer.checkpoint_callback.best_model_path}")
+    f1_score = trainer.callback_metrics.get("val_f1")
+    if f1_score is None:
+        # Fallback for early failure
+        f1_score = 0.0
+
+    # Create the final directory name with f1 score
+    final_run_folder_name = f"{model_name}-f1-{f1_score:.4f}-{timestamp}"
+    final_save_dir = save_path / final_run_folder_name
+
+    # Rename the temporary directory to its final name
+    os.rename(temp_run_save_dir, final_save_dir)
+    print(f"Renamed run directory to: {final_save_dir}")
+
+    # Copy config file to new model directory
+    shutil.copy(config_path, final_save_dir / "config.yaml")
+    print(f"Saved config to {final_save_dir / 'config.yaml'}")
+
+    save_model(model=model, save_path=final_save_dir / "weights.pt")
+    print(f"Saved config to {final_save_dir / 'weights.pt'}")
 
 
 if __name__ == "__main__":

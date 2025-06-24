@@ -60,7 +60,6 @@ def main():
         base_path=RAW_DATA_DIR,
         task_type=task_type,
         label_mapping=label_mapping,
-        normalize=False,
     )
 
     preprocessing_pipeline(

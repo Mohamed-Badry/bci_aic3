@@ -3,13 +3,28 @@
 from pathlib import Path
 
 
-def get_project_root() -> Path:
-    """Find project root by looking for a marker file/folder."""
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "configs").exists() or (parent / ".git").exists():
+def get_project_root(target_folder: str = "src") -> Path:
+    """
+    Simplified version that just goes up until it finds a target folder.
+
+    Args:
+        target_folder: Name of the folder to look for (default: "src")
+    """
+    # Try __file__ first if available
+    try:
+        start_path = Path(__file__).resolve().parent
+    except NameError:
+        # Fallback to current working directory
+        start_path = Path.cwd()
+
+    # Go up the directory tree until we find the target folder
+    current = start_path
+    for parent in [current] + list(current.parents):
+        if (parent / target_folder).exists():
             return parent
-    raise RuntimeError("Could not find project root")
+
+    # If not found, return the starting directory
+    return start_path
 
 
 PROJECT_ROOT = get_project_root()
@@ -37,11 +52,6 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 RUNS_DIR = PROJECT_ROOT / "run"
 MI_RUNS_DIR = RUNS_DIR / "MI"
 SSVEP_RUNS_DIR = RUNS_DIR / "SSVEP"
-
-# checkpoints
-CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
-MI_CHECKPOINTS_DIR = CHECKPOINTS_DIR / "MI"
-SSVEP_CHECKPOINTS_DIR = CHECKPOINTS_DIR / "SSVEP"
 
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 

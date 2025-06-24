@@ -106,7 +106,6 @@ def load_raw_data(
     base_path: str | Path,
     task_type: str,
     label_mapping: Optional[Dict[str, int]] = None,
-    normalize: bool = False,
 ) -> Tuple[BCIDataset, BCIDataset, BCIDataset]:
     """
     Loads the train, val, test data for the given {task_type} inside the given {base_path}
