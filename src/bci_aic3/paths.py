@@ -5,41 +5,39 @@ from pathlib import Path
 
 def get_project_root():
     """
-    Finds the project root. (The extra cases are to handle kaggle environments)
+    Finds the project root by searching upwards from this script's location.
 
-    This function is designed for the Kaggle environment where a project
-    repository is cloned into the `/kaggle/working` directory. It first checks
-    if the current directory is the project root, and if not, it searches
-    one level deep in the subdirectories.
+    The project root is unequivocally identified by the presence of marker files
+    that only exist at the top level of the project, such as '.git' or
+    'pyproject.toml'. This ensures the function is 100% reliable.
 
     Returns:
-        Path: The path to the project root.
-                      Falls back to the current working directory if no markers are found.
+        pathlib.Path: The absolute path to the project root directory.
+
+    Raises:
+        FileNotFoundError: If no project root is found. This function will not
+                           return a potentially incorrect path.
     """
-    current_path = Path.cwd()  # In Kaggle, this is typically /kaggle/working
+    # Use markers that are guaranteed to be at the project's top level.
+    # 'src' is removed because it would cause the function to incorrectly
+    # identify the 'src' directory itself as the root.
+    markers = [".git", "pyproject.toml"]
 
-    # Define the markers that identify the root of your project
-    project_markers = ["pyproject.toml", "src", ".git", "uv.lock"]
+    # Start the search from the location of this file.
+    # This is more reliable than using the current working directory.
+    current_path = Path(__file__).resolve()
 
-    # Case 1: The current directory is the project root
-    for marker in project_markers:
-        if (current_path / marker).exists():
-            return current_path
+    while current_path.parent != current_path:  # Stop at the filesystem root
+        for marker in markers:
+            if (current_path / marker).exists():
+                return current_path  # Project root found
+        current_path = current_path.parent  # Move up one level
 
-    # Case 2: The project is in an immediate subdirectory (the common case)
-    # e.g., current_path is /kaggle/working, project is /kaggle/working/repo_name
-    for child in current_path.iterdir():
-        if child.is_dir():
-            for marker in project_markers:
-                if (child / marker).exists():
-                    # This subdirectory is the project root
-                    return child
-
-    # Fallback: If no project structure is found, return the starting directory.
-    print(
-        f"Warning: Could not find project root markers {project_markers}. Falling back to {current_path}."
+    raise FileNotFoundError(
+        "Could not find project root. Traversed up from "
+        f"'{Path(__file__).resolve()}' but no marker "
+        f"({', '.join(markers)}) was found."
     )
-    return current_path
 
 
 PROJECT_ROOT = get_project_root()
