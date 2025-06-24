@@ -5,11 +5,11 @@ from datetime import datetime
 import os
 from pathlib import Path
 import shutil
-from typing import Tuple
+from typing import List, Tuple
 
 import torch
 import torchmetrics
-from pytorch_lightning import LightningModule, Trainer, seed_everything
+from pytorch_lightning import Callback, LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -233,20 +233,12 @@ def create_processed_data_loaders(
 
 
 def setup_callbacks(
-    model_config: ModelConfig, checkpoints_path: Path, verbose: bool = False
+    model_config: ModelConfig,
+    checkpoints_path: Path | None = None,
+    verbose: bool = False,
 ):
-    callbacks = [
-        # Save best model based on F1 score
-        ModelCheckpoint(
-            dirpath=checkpoints_path,
-            monitor="val_f1",
-            mode="max",  # Higher F1 is better
-            save_top_k=3,  # Keep top 3 models
-            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
-            save_last=True,  # Always save the last checkpoint
-            verbose=verbose,
-        ),
-        # Early stopping to prevent overfitting
+    # Early stopping to prevent overfitting
+    callbacks: List[Callback] = [
         EarlyStopping(
             monitor="val_loss",
             mode="min",
@@ -254,6 +246,22 @@ def setup_callbacks(
             verbose=verbose,
         ),
     ]
+
+    # Only add the ModelCheckpoint callback if a path is provided
+    if checkpoints_path:
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=checkpoints_path,
+            monitor="val_f1",
+            mode="max",  # Higher F1 is better
+            save_top_k=3,  # Keep top 3 models
+            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
+            save_last=True,  # Always save the last checkpoint
+            verbose=verbose,
+        )
+        callbacks.append(checkpoint_callback)
+    else:
+        print("No checkpoints_path provided. Checkpointing is disabled.")
+
     return callbacks
 
 
@@ -261,7 +269,7 @@ def setup_callbacks(
 def train_model(
     model: type[nn.Module],
     config_path: Path,
-    checkpoints_path: Path,
+    checkpoints_path: Path | None = None,
     verbose: bool = True,
 ) -> Tuple[Trainer, BCILightningModule]:
     model_config = load_model_config(config_path)
@@ -306,34 +314,19 @@ def train_model(
     return trainer, module
 
 
-def main():
-    # Code necessary to create reproducible runs
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    seed_everything(42, workers=True)
-    torch.use_deterministic_algorithms(True, warn_only=True)
-
-    # Argument parser for cli use
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--task_type",
-        required=True,
-        help="Task type (MI or SSVEP).",
-    )
-    args = parser.parse_args()
-    task_type = args.task_type.upper()
-
+def train_and_save(task_type: str):
     config_path = None
     save_path = None
-    if task_type == "MI":
+    if task_type.upper() == "MI":
         config_path = MI_CONFIG_PATH
         save_path = MI_RUNS_DIR
-    elif task_type == "SSVEP":
+    elif task_type.upper() == "SSVEP":
         config_path = SSVEP_CONFIG_PATH
         save_path = SSVEP_RUNS_DIR
     else:
         raise (
             ValueError(
-                f"Invalid task_type: {args.task_type}.\nValid task_type (MI) or (SSVEP)"
+                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
             )
         )
 
@@ -377,6 +370,24 @@ def main():
 
     save_model(model=model, save_path=final_save_dir / "weights.pt")
     print(f"Saved config to {final_save_dir / 'weights.pt'}")
+
+
+def main():
+    # Code necessary to create reproducible runs
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    seed_everything(42, workers=True)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+    # Argument parser for cli use
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--task_type",
+        required=True,
+        help="Task type (MI or SSVEP).",
+    )
+    args = parser.parse_args()
+
+    train_and_save(task_type=args.task_type)
 
 
 if __name__ == "__main__":
