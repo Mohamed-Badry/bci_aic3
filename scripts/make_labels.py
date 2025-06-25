@@ -5,13 +5,8 @@ from pathlib import Path
 
 from bci_aic3.inference import make_inference
 from bci_aic3.paths import (
-    MI_RUNS_DIR,
-    SSVEP_RUNS_DIR,
     SUBMISSIONS_DIR,
     RAW_DATA_DIR,
-    # RUNS_DIR,
-    # BEST_MI_MODEL_PATH,
-    # BEST_SSVEP_MODEL_PATH,
 )
 from bci_aic3.util import load_model
 
@@ -45,10 +40,20 @@ def main():
         help="Output csv file name (submission.csv) for example.",
         type=Path,
     )
+    parser.add_argument(
+        "--mi_model_dir",
+        help="Path to the MI model directory that has the weights.pt file.",
+        type=Path,
+    )
+    parser.add_argument(
+        "--ssvep_model_dir",
+        help="Path to the SSVEP model directorythat has the weights.pt file.",
+        type=Path,
+    )
     args = parser.parse_args()
 
-    mi_model = load_model(model_path=MI_RUNS_DIR / "model_scripted.pt")
-    ssvep_model = load_model(model_path=SSVEP_RUNS_DIR / "model_scripted.pt")
+    mi_model = load_model(model_path=Path(args.mi_model_dir) / "weights.pt")
+    ssvep_model = load_model(model_path=Path(args.ssvep_model_dir) / "weights.pt")
 
     mi_preds = make_inference(
         mi_model,

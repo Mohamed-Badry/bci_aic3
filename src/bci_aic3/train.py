@@ -83,7 +83,7 @@ class BCILightningModule(LightningModule):
 
     def forward(self, x):
         # Lightning calls this for inference
-        return self.model(x)  # Your transpose logic
+        return self.model(x)
 
     def training_step(self, batch, batch_idx):
         data, labels = batch
