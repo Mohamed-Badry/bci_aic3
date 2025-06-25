@@ -14,6 +14,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # ===================================================================================================
 # 1. DeepConvNet (SOTA, from https://doi.org/10.1002/hbm.23730)
@@ -468,3 +469,57 @@ class SSVEPformer(nn.Module):
         output = self.classifier(output)
 
         return output
+
+
+class MIN2Net(nn.Module):
+    def __init__(
+        self,
+        num_classes=2,
+        channels=8,
+        samples_per_trial=2250,
+    ):
+        super(MIN2Net, self).__init__()
+
+        # Temporal Convolution
+        self.temporal_conv = nn.Conv1d(
+            channels, 32, kernel_size=64, stride=1, padding=32
+        )
+
+        # Spatial Convolution
+        self.spatial_conv = nn.Conv1d(32, 64, kernel_size=1)
+
+        # Batch Norm
+        self.bn1 = nn.BatchNorm1d(64)
+        self.dropout1 = nn.Dropout(0.5)
+
+        # Depthwise Separable Conv (like in EEGNet/MIN2Net)
+        self.depthwise = nn.Conv1d(64, 64, kernel_size=16, groups=64, padding=8)
+        self.pointwise = nn.Conv1d(64, 128, kernel_size=1)
+        self.bn2 = nn.BatchNorm1d(128)
+        self.dropout2 = nn.Dropout(0.5)
+
+        # Global Average Pooling
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+
+        # Classifier
+        self.classifier = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        # x: (batch, channels, samples)
+        x = self.temporal_conv(x)
+        x = F.elu(x)
+        x = self.spatial_conv(x)
+        x = self.bn1(x)
+        x = self.dropout1(x)
+        x = F.elu(x)
+
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        x = self.bn2(x)
+        x = self.dropout2(x)
+        x = F.elu(x)
+
+        x = self.global_pool(x)
+        x = x.squeeze(-1)  # remove time dimension
+        out = self.classifier(x)
+        return out

@@ -7,9 +7,10 @@ from mne.decoding import CSP
 
 from torch.utils.data import DataLoader
 
+from bci_aic3.util import load_training_stats
 from bci_aic3.config import ProcessingConfig
 from bci_aic3.data import BCIDataset
-from bci_aic3.paths import PROCESSED_DATA_DIR
+from bci_aic3.paths import PROCESSED_DATA_DIR, TRAINING_STATS_PATH
 
 
 class MIBCIPreprocessor(BaseEstimator, TransformerMixin):

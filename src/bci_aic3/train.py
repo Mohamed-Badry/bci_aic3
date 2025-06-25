@@ -21,7 +21,13 @@ from bci_aic3.config import (
 )
 from bci_aic3.data import load_processed_data, load_raw_data
 from bci_aic3.models.eegnet import EEGNet
-from bci_aic3.models.sota import DeepConvNet, ShallowConvNet, ATCNet, SSVEPformer
+from bci_aic3.models.sota import (
+    DeepConvNet,
+    ShallowConvNet,
+    ATCNet,
+    SSVEPformer,
+    MIN2Net,
+)
 from bci_aic3.paths import (
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
@@ -40,6 +46,7 @@ def get_model_class(model_name: str):
         "ShallowConvNet": ShallowConvNet,
         "ATCNet": ATCNet,
         "SSVEPformer": SSVEPformer,
+        "MIN2Net": MIN2Net,
     }
     return models[model_name]
 

@@ -1,6 +1,6 @@
 # model config
 model:
-  name: "SSVEPformer"        # {EEGNet | DeepConvNet | ShallowConvNet | ATCNet | SSVEPformer}
+  name: "SSVEPformer"        # {EEGNet | DeepConvNet | ShallowConvNet | ATCNet | SSVEPformer | MIN2Net}
   task_type: "SSVEP"
   num_classes: 4
   sequence_length: 1750
