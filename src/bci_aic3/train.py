@@ -214,7 +214,6 @@ def create_processed_data_loaders(
     task_type: str,
     batch_size: int,
     num_workers: int,
-    normalize: bool = True,
 ):
     """
     Creates PyTorch DataLoader objects for training and validation datasets from preprocessed data.
@@ -223,13 +222,12 @@ def create_processed_data_loaders(
         task_type (str): The type of task (MI or SSVEP) for which the data is prepared.
         batch_size (int): Number of samples per batch to load.
         num_workers (int): Number of subprocesses to use for data loading.
-        normalize (bool, optional): Whether to normalize the data. Defaults to True.
     Returns:
         tuple[DataLoader, DataLoader]: A tuple containing the training and validation DataLoader objects.
     """
 
     train, val = load_processed_data(
-        processed_data_dir=processed_data_dir, task_type=task_type, normalize=normalize
+        processed_data_dir=processed_data_dir, task_type=task_type
     )
 
     train_loader = DataLoader(

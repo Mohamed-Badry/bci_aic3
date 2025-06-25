@@ -10,12 +10,10 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 from tqdm import tqdm
 
-from bci_aic3.paths import LABEL_MAPPING_PATH, RAW_DATA_DIR, TRAINING_STATS_PATH
+from bci_aic3.paths import LABEL_MAPPING_PATH, RAW_DATA_DIR
 from bci_aic3.util import (
     ensure_base_path,
     read_json_to_dict,
-    save_training_stats,
-    apply_normalization,
 )
 
 
@@ -149,7 +147,6 @@ def load_raw_data(
 def load_processed_data(
     processed_data_dir: str | Path,
     task_type: str,
-    normalize: bool = True,
 ) -> Tuple[TensorDataset, TensorDataset]:
     # Convert base_path to Path object if it's a string
     if isinstance(processed_data_dir, str):
@@ -162,18 +159,6 @@ def load_processed_data(
 
     val_data = np.load(data_path / "validation_data.npy")
     val_labels = np.load(data_path / "validation_labels.npy")
-
-    if normalize:
-        training_means = train_data.mean((0, 2))
-        training_stds = train_data.std((0, 2))
-
-        save_training_stats(
-            {"mean": training_means, "std": training_stds},
-            TRAINING_STATS_PATH / f"{task_type.lower()}_stats.pt",
-        )
-
-        train_data = apply_normalization(train_data, training_means, training_stds)
-        val_data = apply_normalization(val_data, training_means, training_stds)
 
     train_dataset = create_tensor_dataset(train_data, train_labels)
     val_dataset = create_tensor_dataset(val_data, val_labels)

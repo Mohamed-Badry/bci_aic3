@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from sklearn.base import BaseEstimator
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -14,11 +15,9 @@ from bci_aic3.paths import (
     SSVEP_CONFIG_PATH,
     TRAINING_STATS_PATH,
 )
-from bci_aic3.preprocess import apply_all_preprocessing_steps
+from bci_aic3.preprocess import MIBCIPreprocessor
 from bci_aic3.util import (
-    apply_normalization,
     load_model,
-    load_training_stats,
     read_json_to_dict,
 )
 
@@ -26,6 +25,23 @@ from bci_aic3.util import (
 def load_and_preprocess_for_inference(
     csv_file: str, base_path: str | Path, task_type: str
 ) -> TensorDataset:
+    # determine config_path and preprocessor for task_type
+    config_path = None
+    preprocessor = BaseEstimator
+    if task_type == "MI":
+        config_path = MI_CONFIG_PATH
+        preprocessor = MIBCIPreprocessor
+    elif task_type == "SSVEP":
+        config_path = SSVEP_CONFIG_PATH
+        # preprocessor = SSVEPPreprocessor
+    else:
+        raise (
+            ValueError(
+                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
+            )
+        )
+
+    # load data
     test = BCIDataset(
         csv_file=csv_file,
         base_path=base_path,
@@ -34,37 +50,20 @@ def load_and_preprocess_for_inference(
         label_mapping=read_json_to_dict(LABEL_MAPPING_PATH),
     )
 
-    config_path = None
-    if task_type == "MI":
-        config_path = MI_CONFIG_PATH
-    elif task_type == "SSVEP":
-        config_path = SSVEP_CONFIG_PATH
-    else:
-        raise (
-            ValueError(
-                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
-            )
-        )
+    # create data loader
+    data_loader = DataLoader(test, batch_size=len(test), shuffle=False)
+    data_batch = next(iter(data_loader))
+    data = data_batch.numpy()
 
     processing_config = load_processing_config(config_path)
 
-    data_loader = DataLoader(test, batch_size=len(test), shuffle=False)
-    data_batch = next(iter(data_loader))
+    # load preprocessor
+    preprocessor = preprocessor.load(TRAINING_STATS_PATH, config=processing_config)  # type: ignore
 
-    data = data_batch.numpy()
+    # apply transformation
+    processed_data = preprocessor.transform(X=data)
 
-    processed_data = apply_all_preprocessing_steps(
-        data=data, settings=processing_config
-    )
-
-    training_stats = load_training_stats(
-        TRAINING_STATS_PATH / f"{task_type.lower()}_stats.pt"
-    )
-    normalized_test_data = apply_normalization(
-        processed_data, training_stats["mean"], training_stats["std"]
-    )
-
-    test_tensor = torch.from_numpy(normalized_test_data).float()
+    test_tensor = torch.from_numpy(processed_data).float()
 
     return TensorDataset(test_tensor)
 

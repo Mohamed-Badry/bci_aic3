@@ -1,16 +1,20 @@
-import numpy as np
+from pathlib import Path
+
+import joblib
 import mne
+import numpy as np
+from mne.decoding import CSP
+from mne.preprocessing import ICA
 from scipy.signal import butter, filtfilt
 from sklearn.base import BaseEstimator, TransformerMixin
-from mne.preprocessing import ICA
-from mne.decoding import CSP
-
 from torch.utils.data import DataLoader
 
-from bci_aic3.util import load_training_stats
 from bci_aic3.config import ProcessingConfig
 from bci_aic3.data import BCIDataset
-from bci_aic3.paths import PROCESSED_DATA_DIR, TRAINING_STATS_PATH
+from bci_aic3.paths import (
+    PROCESSED_DATA_DIR,
+    TRAINING_STATS_PATH,
+)
 
 
 class MIBCIPreprocessor(BaseEstimator, TransformerMixin):
@@ -19,20 +23,23 @@ class MIBCIPreprocessor(BaseEstimator, TransformerMixin):
 
     This pipeline applies the following steps:
     1. Converts NumPy array to MNE EpochsArray.
-    2. Applies a notch filter to remove powerline noise.
-    3. Applies a custom Butterworth bandpass filter.
-    4. Fits and applies ICA to remove biological artifacts.
-    5. Crops the epochs to the time window of interest.
-    6. Fits and applies Common Spatial Patterns (CSP) for feature extraction.
+    2. Applies notch and bandpass filters.
+    3. Fits and applies ICA for artifact removal.
+    4. Crops the epochs to the time window of interest.
+    5. Fits and applies Common Spatial Patterns (CSP).
+    6. Calculates and applies channel-wise normalization (mean/std).
 
-    The output is ready for a classification model like EEGNet.
+    The fitted components (ICA, CSP, normalization stats) can be saved and loaded.
     """
 
     def __init__(self, config: ProcessingConfig):
+        """Initializes the preprocessor with a given configuration."""
         self.config = config
         self.ica = None
         self.csp = None
         self.info = None
+        self.mean_ = None  # To store mean for normalization
+        self.std_ = None  # To store std for normalization
 
     def _create_mne_epochs(self, X: np.ndarray) -> mne.EpochsArray:
         """Creates an MNE EpochsArray object from a NumPy array."""
@@ -42,116 +49,136 @@ class MIBCIPreprocessor(BaseEstimator, TransformerMixin):
             )
             montage = mne.channels.make_standard_montage("standard_1020")
             self.info.set_montage(montage, on_missing="ignore")
-
-        tmin_original = 0
-        return mne.EpochsArray(X, self.info, tmin=tmin_original, verbose=False)
+        return mne.EpochsArray(X, self.info, tmin=0, verbose=False)
 
     def _apply_filters(self, epochs: mne.EpochsArray) -> mne.EpochsArray:
         """Applies notch and bandpass filters to the data array."""
-        # Get data as a NumPy array to apply filters
         data = epochs.get_data(copy=True)
-
-        # 1. Notch Filter using the top-level MNE function
         data_notched = mne.filter.notch_filter(
             data,
             Fs=self.config.sfreq,
             freqs=self.config.notch_freq,
-            method="iir",  # IIR is generally faster for notch
+            method="iir",
             verbose=False,
         )
-
-        # 2. Bandpass Filter (using a zero-phase Butterworth filter)
         b, a = butter(  # type: ignore
             self.config.filter_order,
             [self.config.bandpass_low, self.config.bandpass_high],
             btype="bandpass",
             fs=self.config.sfreq,
         )
-
-        # Apply the filter forward and backward to each channel and epoch
         data_bandpassed = filtfilt(b, a, data_notched, axis=-1)
-
-        # Create a new EpochsArray with the filtered data
-        epochs_filtered = mne.EpochsArray(
+        return mne.EpochsArray(
             data_bandpassed, epochs.info, tmin=epochs.tmin, verbose=False
         )
-        return epochs_filtered
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         """
-        Fits the ICA and CSP transformers on the training data.
+        Fits ICA, CSP, and computes normalization statistics from the training data.
 
         Args:
             X: EEG data, shape (n_epochs, n_channels, n_times)
             y: Labels, shape (n_epochs,)
         """
-        # --- Step 1: Create MNE object and apply basic filters ---
+        # Steps 1-2: Create MNE object and apply filters
         epochs = self._create_mne_epochs(X)
         epochs_filtered = self._apply_filters(epochs)
 
-        # --- Step 2: Fit ICA for artifact removal ---
+        # Step 3: Fit ICA
         self.ica = ICA(
             n_components=self.config.ica_n_components,
             random_state=self.config.ica_random_state,
             max_iter="auto",
         )
         self.ica.fit(epochs_filtered)
-
-        # --- Step 3: Apply ICA and Crop Epochs ---
         epochs_ica = self.ica.apply(epochs_filtered.copy(), verbose=False)
+
+        # Step 4: Crop
         epochs_cropped = epochs_ica.copy().crop(
-            tmin=self.config.tmin,
-            tmax=self.config.tmax,
-            include_tmax=False,
+            tmin=self.config.tmin, tmax=self.config.tmax, include_tmax=False
         )
 
-        # --- Step 4: Fit CSP ---
+        # Step 5: Fit CSP
         self.csp = CSP(
             n_components=self.config.n_csp_components,
             reg=None,
-            log=None,  # Set to False to get the time series, not log-variance
+            log=None,
             norm_trace=False,
             transform_into="csp_space",
         )
-        self.csp.fit(epochs_cropped.get_data(), y)
+        csp_data = self.csp.fit_transform(epochs_cropped.get_data(copy=False), y)
+
+        # Step 6: Calculate normalization statistics from the CSP-transformed training data
+        self.mean_ = np.mean(csp_data, axis=(0, 2), keepdims=True)
+        self.std_ = np.std(csp_data, axis=(0, 2), keepdims=True)
+
+        # Add a small epsilon to std to avoid division by zero
+        self.std_[self.std_ == 0] = 1e-6
 
         return self
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """
-        Applies the learned transformations (ICA, CSP) to the data.
-
-        Args:
-            X: EEG data, shape (n_epochs, n_channels, n_times)
-
-        Returns:
-            Spatially filtered time-series data, shape (n_epochs, n_csp_components, n_cropped_times)
+        Applies the learned transformations (ICA, CSP, Normalization) to the data.
         """
-        if self.ica is None or self.csp is None:
+        if (
+            self.ica is None
+            or self.csp is None
+            or self.mean_ is None
+            or self.std_ is None
+        ):
             raise RuntimeError(
-                "The preprocessor has not been fitted yet. Call fit() first."
+                "The preprocessor has not been fitted. Call fit() or load() first."
             )
 
-        # --- Step 1 & 2: Create MNE object and apply filters ---
+        # Steps 1-4: Create MNE object, filter, apply ICA, crop
         epochs = self._create_mne_epochs(X)
         epochs_filtered = self._apply_filters(epochs)
-
-        # --- Step 3: Apply fitted ICA ---
         epochs_ica = self.ica.apply(epochs_filtered, verbose=False)
-
-        # --- Step 4: Crop to time window of interest ---
         epochs_cropped = epochs_ica.crop(
             tmin=self.config.tmin, tmax=self.config.tmax, include_tmax=False
         )
 
-        # --- Step 5: Apply fitted CSP to get spatially filtered time series ---
-        eegnet_input = self.csp.transform(epochs_cropped.get_data())
+        # Step 5: Apply CSP
+        csp_data = self.csp.transform(epochs_cropped.get_data(copy=False))
 
-        return eegnet_input.astype(np.float32)
+        # Step 6: Apply Normalization using stored stats
+        normalized_data = (csp_data - self.mean_) / self.std_
+
+        return normalized_data.astype(np.float32)
 
     def fit_transform(self, X, y=None, **fit_params):
         """Fit to data, then transform it."""
-        return self.fit(X, y).transform(X)  # type: ignore
+        self.fit(X, y)  # type: ignore
+        return self.transform(X)  # type: ignore
+
+    def save(self, path: Path):
+        """Saves the fitted components to a directory."""
+        if any(
+            attr is None
+            for attr in [self.ica, self.csp, self.info, self.mean_, self.std_]
+        ):
+            raise RuntimeError("The preprocessor has not been fitted yet. Cannot save.")
+
+        path.mkdir(parents=True, exist_ok=True)
+        self.ica.save(path / "ica-ica.fif", overwrite=True)  # type: ignore
+        joblib.dump(self.csp, path / "csp.gz")
+        joblib.dump(self.info, path / "info.gz")
+        joblib.dump({"mean": self.mean_, "std": self.std_}, path / "norm_stats.gz")
+        print(f"✅ Preprocessor components successfully saved to '{path}'")
+
+    @classmethod
+    def load(cls, path: Path, config: ProcessingConfig):
+        """Loads a pre-fitted preprocessor from a directory."""
+        instance = cls(config)
+        instance.ica = mne.preprocessing.read_ica(path / "ica-ica.fif")
+        instance.csp = joblib.load(path / "csp.gz")
+        instance.info = joblib.load(path / "info.gz")
+        norm_stats = joblib.load(path / "norm_stats.gz")
+        instance.mean_ = norm_stats["mean"]
+        instance.std_ = norm_stats["std"]
+        print(f"✅ Preprocessor components successfully loaded from '{path}'")
+        return instance
 
 
 def preprocessing_pipeline(
@@ -160,54 +187,44 @@ def preprocessing_pipeline(
     task_type: str,
     processing_config: ProcessingConfig,
 ):
-    train_loader = DataLoader(
-        train_dataset, batch_size=len(train_dataset), shuffle=False
-    )
+    """The main pipeline to preprocess data and save the processor."""
+    train_loader = DataLoader(train_dataset, batch_size=len(train_dataset))
     train_data, train_labels = next(iter(train_loader))
-
-    val_loader = DataLoader(
-        validation_dataset, batch_size=len(validation_dataset), shuffle=False
-    )
+    val_loader = DataLoader(validation_dataset, batch_size=len(validation_dataset))
     val_data, val_labels = next(iter(val_loader))
 
-    train_data = train_data.numpy()
-    train_labels = train_labels.numpy()
-
-    val_data = val_data.numpy()
-    val_labels = val_labels.numpy()
+    train_data, train_labels = train_data.numpy(), train_labels.numpy()
+    val_data, val_labels = val_data.numpy(), val_labels.numpy()
 
     preprocessor = MIBCIPreprocessor(processing_config)
-
+    print("Fitting preprocessor and transforming training data...")
     train_data_processed = preprocessor.fit_transform(train_data, train_labels)
+    print("Done.")
 
+    print("Saving preprocessor state...")
+
+    stats_saving_path = TRAINING_STATS_PATH / task_type
+    stats_saving_path.mkdir(parents=True, exist_ok=True)
+    preprocessor.save(stats_saving_path)
+
+    print("Transforming validation data with the fitted preprocessor...")
     val_data_processed = preprocessor.transform(val_data)
+    print("Done.")
 
-    # Define the directory where the files will be saved
     output_dir = PROCESSED_DATA_DIR / task_type.upper()
-
-    # Create the directory if it doesn't exist
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save processed training data and labels
-    processed_train_data_path = output_dir / "train_data.npy"
-    processed_labels_path = output_dir / "validation_labels.npy"
+    np.save(output_dir / "train_data.npy", train_data_processed)
+    np.save(output_dir / "train_labels.npy", train_labels)
+    np.save(output_dir / "validation_data.npy", val_data_processed)
+    np.save(output_dir / "validation_labels.npy", val_labels)
+    print(f"✅ Processed data saved to '{output_dir}'")
 
-    np.save(processed_train_data_path, train_data_processed)
-    print(f"Processed data successfully saved at: {processed_train_data_path}")
-    np.save(processed_labels_path, train_labels)
-    print(f"Processed labels successfully saved at: {processed_labels_path}")
 
-    # Save processed validation data and labels
-    processed_val_data_path = output_dir / "validation_data.npy"
-    processed_labels_path = output_dir / "validation_labels.npy"
-
-    np.save(processed_val_data_path, val_data_processed)
-    print(f"Processed data successfully saved at: {processed_val_data_path}")
-
-    np.save(processed_labels_path, val_labels)
-    print(f"Processed labels successfully saved at: {processed_labels_path}")
+def main():
+    print("help me")
 
 
 # --- Usage Example ---
 if __name__ == "__main__":
-    print("Help me!")
+    main()
