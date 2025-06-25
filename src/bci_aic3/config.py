@@ -1,7 +1,7 @@
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from .paths import CONFIG_DIR
-from typing import Tuple
+from typing import List
 
 
 @dataclass
@@ -11,6 +11,7 @@ class ModelConfig:
     num_classes: int
     sequence_length: int
     num_channels: int
+    n_csp_components: int  # Number of CSP components to keep (usually 4-8)
     new_sequence_length: (
         int  # this is the sequence length calculated after preprocessing
     )
@@ -35,6 +36,7 @@ class TrainingConfig:
     epochs: int
     learning_rate: float
     batch_size: int
+    patience: int
 
 
 def load_training_config(path):
@@ -46,14 +48,31 @@ def load_training_config(path):
 
 @dataclass
 class ProcessingConfig:
+    """Configuration for the MI-BCI preprocessing pipeline."""
+
+    # Data parameters
+    sfreq: int
+
+    # Filtering parameters
     notch_freq: float
-    lfreq: float
-    hfreq: float
-    baseline: Tuple[float, float]
-    tmin: float
-    tmax: float
-    sfreq: float = 250.0
-    scaling_factor: float = 1e-6  # Convert microvolts to volts for MNE
+    bandpass_low: float
+    bandpass_high: float
+    filter_order: int
+
+    # Epoching and Cropping
+    tmin: float  # Start time of the MI task relative to cue
+    tmax: float  # End time of the MI task (e.g., 3-second window)
+
+    # ICA parameters
+    ica_n_components: int  # Use all channels for ICA
+    ica_random_state: int
+
+    # CSP parameters
+    n_csp_components: int  # Number of CSP components to keep (usually 4-8)
+
+    ch_names: List[str] = field(
+        default_factory=lambda: ["FZ", "C3", "CZ", "C4", "PZ", "PO7", "OZ", "PO8"]
+    )
 
 
 def load_processing_config(path):

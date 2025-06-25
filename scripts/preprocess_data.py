@@ -64,15 +64,8 @@ def main():
 
     preprocessing_pipeline(
         train,
-        task_type=task_type,
-        split="train",
-        processing_config=processing_config,
-    )
-
-    preprocessing_pipeline(
         val,
         task_type=task_type,
-        split="validation",
         processing_config=processing_config,
     )
 

@@ -21,3 +21,8 @@ submissions/
 
 # data folder
 data/
+
+
+# model runs
+run/MI/*
+run/SSVEP/*

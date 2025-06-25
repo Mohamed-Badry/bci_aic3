@@ -21,6 +21,7 @@ from bci_aic3.config import (
 )
 from bci_aic3.data import load_processed_data, load_raw_data
 from bci_aic3.models.eegnet import EEGNet
+from bci_aic3.models.sota import DeepConvNet, ShallowConvNet, ATCNet, SSVEPformer
 from bci_aic3.paths import (
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
@@ -30,6 +31,17 @@ from bci_aic3.paths import (
     SSVEP_RUNS_DIR,
 )
 from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
+
+
+def get_model_class(model_name: str):
+    models = {
+        "EEGNet": EEGNet,
+        "DeepConvNet": DeepConvNet,
+        "ShallowConvNet": ShallowConvNet,
+        "ATCNet": ATCNet,
+        "SSVEPformer": SSVEPformer,
+    }
+    return models[model_name]
 
 
 class BCILightningModule(LightningModule):
@@ -234,6 +246,7 @@ def create_processed_data_loaders(
 
 def setup_callbacks(
     model_config: ModelConfig,
+    patience: int = 10,
     checkpoints_path: Path | None = None,
     verbose: bool = False,
 ):
@@ -242,7 +255,7 @@ def setup_callbacks(
         EarlyStopping(
             monitor="val_loss",
             mode="min",
-            patience=10,
+            patience=patience,
             verbose=verbose,
         ),
     ]
@@ -289,14 +302,17 @@ def train_model(
     module = BCILightningModule(
         model=model,
         num_classes=model_config.num_classes,
-        num_channels=model_config.num_channels,
+        num_channels=model_config.n_csp_components,
         sequence_length=model_config.new_sequence_length,
         lr=training_config.learning_rate,
     )
 
     # Setup callbacks
     callbacks = setup_callbacks(
-        model_config, checkpoints_path=checkpoints_path, verbose=verbose
+        model_config,
+        patience=training_config.patience,
+        checkpoints_path=checkpoints_path,
+        verbose=verbose,
     )
 
     # Create trainer
@@ -330,8 +346,10 @@ def train_and_save(task_type: str):
             )
         )
 
+    model_config = load_model_config(config_path)
+
     # model to use
-    model = EEGNet
+    model = get_model_class(model_config.name)
     model_name = model.__name__
 
     # Create a unique temporary directory first, using only the timestamp

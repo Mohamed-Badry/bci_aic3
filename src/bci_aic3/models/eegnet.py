@@ -33,7 +33,7 @@ class EEGNet(nn.Module):
         num_classes=4,
         channels=8,
         samples_per_trial=1750,
-        dropoutRate=0.25,
+        dropoutRate=0.5,
         kernLength=250,
         F1=96,
         D=1,

@@ -1,24 +1,34 @@
 # model config
 model:
-  name: "EEGNet"
+  name: "DeepConvNet"      # {EEGNet | DeepConvNet | ShallowConvNet | ATCNet | SSVEPformer} 
   task_type: "MI"
   num_classes: 2
-  sequence_length: 2250
   num_channels: 8
+  sequence_length: 2250
+  n_csp_components: 6  # Number of CSP components to keep (usually 4-8)
 
 # training config
 training:
-  epochs: 20
-  batch_size: 64
-  learning_rate: 0.001
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.0001
+  patience: 10        
 
 # preprocessing settings
 preprocessing:
+  
   notch_freq: 50.0
-  lfreq: 6.0
-  hfreq: 32.0
-  baseline: [0.0, 2.0]
-  tmin: 2.0
-  tmax: 8.0
+  bandpass_low: 7.0
+  bandpass_high: 35.0
+  filter_order: 5
+
+  tmin: 1
+  tmax: 8
   sfreq: 250.0
-  scaling_factor: 1.0
+
+  # ICA parameters
+  ica_n_components: 8  # Use all channels for ICA
+  ica_random_state: 42
+
+  # CSP parameters
+  n_csp_components: 6  # Number of CSP components to keep (usually 4-8)
