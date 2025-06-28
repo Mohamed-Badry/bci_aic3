@@ -1,39 +1,29 @@
-import joblib
-
 from pathlib import Path
 
-
-from sklearn.base import BaseEstimator
+import joblib
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from torcheeg.models import EEGNet
 
-from bci_aic3.preprocess import (  # necessary to load preprocessing pipeline with joblib
-    MNENotchFilter,
-    BandPassFilter,
-    TemporalCrop,
-    ChannelWiseNormalizer,
-    EEGReshaper,
-    StatisticalArtifactRemoval,
-    unsqueeze_for_eeg,
-)
-from bci_aic3.config import load_processing_config
 from bci_aic3.data import BCIDataset
 from bci_aic3.paths import (
     LABEL_MAPPING_PATH,
-    MI_CONFIG_PATH,
-    MI_RUNS_DIR,
     MI_TRAINING_STATS_PATH,
     RAW_DATA_DIR,
     REVERSE_LABEL_MAPPING_PATH,
-    SSVEP_CONFIG_PATH,
-    SSVEP_RUNS_DIR,
+    RUNS_DIR,
     SSVEP_TRAINING_STATS_PATH,
-    TRAINING_STATS_PATH,
+)
+from bci_aic3.preprocess import (  # necessary to load preprocessing pipeline with joblib
+    BandPassFilter,  # noqa: F401
+    ChannelWiseNormalizer,  # noqa: F401
+    EEGReshaper,  # noqa: F401
+    MNENotchFilter,  # noqa: F401
+    StatisticalArtifactRemoval,  # noqa: F401
+    TemporalCrop,  # noqa: F401
+    unsqueeze_for_eeg,  # noqa: F401
 )
 from bci_aic3.train import BCILightningModule
 from bci_aic3.util import (
-    load_model,
     read_json_to_dict,
 )
 
@@ -146,24 +136,14 @@ def make_inference(
 
 def main():
     # Config paths
-    task_type = "SSVEP"
+    task_type = "MI"
     model_path = (
-        SSVEP_RUNS_DIR
-        / "../../run/SSVEP/EEGNet-f1-0.5191-20250628_075115/checkpoints/eegnet-ssvep-best-f1-val_f1=0.6345-epoch=32.ckpt"
+        RUNS_DIR
+        / "MI/ATCNet-20250628_205919-inprogress/checkpoints/atcnet-mi-best-f1-val_f1=0.6875-epoch=36.ckpt"
     )
-    eegnet = EEGNet(
-        num_electrodes=8,
-        chunk_size=1500,
-        num_classes=4,
-        F1=16,  # number of temporal filters
-        F2=32,  # number of spatial filters (F1 * D)
-        D=2,  # depth multiplier for depthwise conv
-        kernel_1=125,  # ~1 second at 250Hz for temporal conv
-        kernel_2=8,  # spatial kernel size (all channels)
-        dropout=0.25,
-    )
+
     # load model
-    model = BCILightningModule.load_from_checkpoint(model_path, model=eegnet)
+    model = BCILightningModule.load_from_checkpoint(model_path)
 
     # Run inference
     predictions = make_inference(

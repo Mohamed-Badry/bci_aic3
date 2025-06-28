@@ -1,6 +1,6 @@
 # model config
 model:                # Common parameters
-  name: "EEGNet"      # {ATCNet | EEGNet}
+  name: "ATCNet"      # {ATCNet | EEGNet}
   task_type: "MI"
   num_classes: 2
   num_channels: 8

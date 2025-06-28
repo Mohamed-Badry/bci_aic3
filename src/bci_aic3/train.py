@@ -383,6 +383,9 @@ def train_and_save(
 
 
 def main():
+    # To utilize cuda cores
+    torch.set_float32_matmul_precision("medium")
+
     # Code necessary to create reproducible runs
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     seed_everything(42, workers=True)
