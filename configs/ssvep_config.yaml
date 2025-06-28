@@ -1,47 +1,65 @@
 # model config
 model:
-  name: "EEGNet"        # {EEGNet | TSCeption}
+  name: "EEGNet" # {EEGNet | TSCeption | FBCNet | ATCNet}
   task_type: "SSVEP"
   num_classes: 4
-  num_channels: 8
+  num_channels: 8  
   sequence_length: 1750
 
   # Model-specific parameters
   eegnet:
-    F1: 16                # number of temporal filters
-    F2: 32                # number of spatial filters (F1 * D)
-    D: 2                  # depth multiplier for depthwise conv
-    kernel_1: 125         # ~1 second at 250Hz for temporal conv
-    kernel_2: 8           # spatial kernel size (all channels)
-    dropout: 0.25
-    
+    F1: 32                    # increased for better frequency feature extraction
+    F2: 64                    # F1 * D 
+    D: 2                      # depth multiplier for depthwise conv
+    kernel_1: 62              # ~0.25s at 250Hz for SSVEP frequency resolution
+    kernel_2: 8               # spatial kernel size (all channels)
+    dropout: 0.3              # slightly higher for regularization
+  
   atcnet:
-    num_windows: 6
-    tcn_kernel_size: 4
-    F1: 4
-    D: 2
-    conv_pool_size: 7
-    tcn_depth: 2
+    num_windows: 5            # reduced for 7s window (1750/350=5)
+    tcn_kernel_size: 7        # larger for temporal patterns
+    F1: 16                    # increased for more features
+    D: 2                      # depth multiplier
+    conv_pool_size: 7         # pooling size
+    tcn_depth: 2              # depth of TCN
+  
+  fbcnet:
+    num_electrodes: 8         # your electrode count
+    chunk_size: 1750          # your sequence length
+    in_channels: 9            # filter banks for frequency bands
+    num_S: 32                 # spatial convolution blocks
+    temporal: "LogVarLayer"   # temporal pooling method
+    stride_factor: 4          # downsampling stride
+    weight_norm: true         # weight normalization
+  
+  tsception:
+    num_electrodes: 8         # your electrode count
+    num_T: 15                 # temporal kernels for frequency capture
+    num_S: 15                 # spatial kernels for electrode patterns
+    in_channels: 1            # single channel input
+    hid_channels: 32          # hidden layer size
+    sampling_rate: 250        # your sampling rate
+    dropout: 0.3              # regularization
 
 
 # training config
 training:
   epochs: 200
   batch_size: 32
-  learning_rate: 0.0005
+  learning_rate: 0.001
   patience: 50     
 
   # scheduler params
   scheduler_patience: 10
-  factor: 0.3
+  factor: 0.5
 
 
 # preprocessing settings
 preprocessing:
   
   notch_freq: 50.0
-  bandpass_low: 5.0
-  bandpass_high: 40.0
+  bandpass_low: 6.0
+  bandpass_high: 20.0
   filter_order: 4
 
   tmin: 0.5

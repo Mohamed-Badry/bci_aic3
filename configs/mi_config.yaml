@@ -1,6 +1,6 @@
 # model config
-model:                # Common parameters
-  name: "ATCNet"      # {ATCNet | EEGNet}
+model: # Common parameters
+  name: "ATCNet" # {EEGNet | ATCNet | FBCNet | TSCeption}
   task_type: "MI"
   num_classes: 2
   num_channels: 8
@@ -13,19 +13,35 @@ model:                # Common parameters
     F2: 8
     kernel_1: 187
     kernel_2: 16
-    dropout: 0.3
-    
+    dropout: 0.3   
+  
   atcnet:
     num_windows: 6
     tcn_kernel_size: 4
     F1: 4
     D: 2
     conv_pool_size: 7
-    tcn_depth: 2
+    tcn_depth: 2 
+  
+  fbcnet:
+    in_channels: 9            
+    num_S: 32                 
+    temporal: "LogVarLayer"   
+    stride_factor: 4          
+    weight_norm: true         
+  
+  tsception:
+    num_T: 15                 
+    num_S: 15                 
+    in_channels: 1            
+    hid_channels: 32          
+    sampling_rate: 250        
+    dropout: 0.4              
+
 
 # training config
 training:
-  epochs: 100
+  epochs: 150
   batch_size: 32
   learning_rate: 0.001
   patience: 40
@@ -33,18 +49,15 @@ training:
   # scheduler params
   scheduler_patience: 10
   factor: 0.5
-
-
+  
 # preprocessing settings
 preprocessing:
-
   notch_freq: 50.0
-  bandpass_low: 4.0
-  bandpass_high: 35.0
-  filter_order: 5
+  bandpass_low: 4.0           # focus on mu rhythm (8-12Hz)
+  bandpass_high: 35.0         # include beta rhythm (13-30Hz)
+  filter_order: 5             
 
-  tmin: 0
-  tmax: 9
+  tmin: 0                     
+  tmax: 9                     
   sfreq: 250.0
-
-  z_threshold: 3
+  z_threshold: 3              # Statistical Artifact Removal 

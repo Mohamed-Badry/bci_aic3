@@ -1,10 +1,12 @@
 import argparse
+import glob
 import pandas as pd
 from pathlib import Path
 
 
 from bci_aic3.inference import make_inference
 from bci_aic3.paths import (
+    BEST_MODELS_CHECKPOINT,
     SUBMISSIONS_DIR,
     RAW_DATA_DIR,
 )
@@ -17,6 +19,7 @@ def save_labels(csv_file_path, mi_preds, ssvep_preds, output_file_path):
     df.loc[df["task"] == "SSVEP", "labels"] = ssvep_preds
     df.loc[df["task"] == "MI", "labels"] = mi_preds
 
+    output_file_path.mkdir(parents=True, exist=True)
     df[["id", "labels"]].to_csv(output_file_path, index=False)
     print(f"Labels successfully saved to the file {output_file_path}.")
 
@@ -38,30 +41,44 @@ def main():
     parser.add_argument(
         "--output_file",
         help="Output csv file name (submission.csv) for example.",
+        required=True,
         type=Path,
     )
     parser.add_argument(
         "--mi",
         help="Path to the MI model checkpoint (.ckpt) file.",
+        default=None,
         type=Path,
     )
     parser.add_argument(
         "--ssvep",
         help="Path to the SSVEP model checkpoint (.ckpt) file.",
+        default=None,
         type=Path,
     )
     args = parser.parse_args()
 
-    mi_model_path = Path(args.mi)
-    ssvep_model_path = Path(args.ssvep)
+    # Find single .ckpt file in each directory if user didn't provide it
+    if args.mi is None:
+        mi_ckpt_files = glob.glob(str(BEST_MODELS_CHECKPOINT / "MI" / "*.ckpt"))
+        if len(mi_ckpt_files) != 1:
+            raise FileNotFoundError(
+                f"Expected exactly 1 .ckpt file in {BEST_MODELS_CHECKPOINT / 'MI'} directory, found {len(mi_ckpt_files)}"
+            )
+        mi_model_path = Path(mi_ckpt_files[0])
+    else:
+        mi_model_path = Path(args.mi) if isinstance(args.mi, str) else args.mi
 
-    if not mi_model_path.exists():
-        raise FileNotFoundError(
-            f"The MI model path provided {mi_model_path} doesn't exist"
-        )
-    if not ssvep_model_path.exists():
-        raise FileNotFoundError(
-            f"The SSVEP model path provided {ssvep_model_path} doesn't exist"
+    if args.ssvep is None:
+        ssvep_ckpt_files = glob.glob(str(BEST_MODELS_CHECKPOINT / "SSVEP" / "*.ckpt"))
+        if len(ssvep_ckpt_files) != 1:
+            raise FileNotFoundError(
+                f"Expected exactly 1 .ckpt file in {BEST_MODELS_CHECKPOINT / 'SSVEP'} directory, found {len(ssvep_ckpt_files)}"
+            )
+        ssvep_model_path = Path(ssvep_ckpt_files[0])
+    else:
+        ssvep_model_path = (
+            Path(args.ssvep) if isinstance(args.ssvep, str) else args.ssvep
         )
 
     mi_model = BCILightningModule.load_from_checkpoint(mi_model_path)

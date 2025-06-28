@@ -3,32 +3,9 @@
 import json
 import os
 from pathlib import Path
-from typing import Dict
 
 import torch
 from torch.nn.utils import parametrize
-from torcheeg.models import (
-    FBCCNN,
-    MTCNN,
-    ATCNet,
-    EEGNet,
-    FBCNet,
-    TSCeption,
-    FBMSNet,
-)
-
-
-def get_model_class(model_name: str) -> torch.nn.Module:
-    models = {
-        "FBCCNN": FBCCNN,
-        "MTCNN": MTCNN,
-        "ATCNet": ATCNet,
-        "EEGNet": EEGNet,
-        "FBCNet": FBCNet,
-        "TSCeption": TSCeption,
-        "FBMSNet": FBMSNet,
-    }
-    return models[model_name]
 
 
 def ensure_base_path(base_path: str | Path) -> Path:
@@ -129,14 +106,3 @@ def load_model(
     model.load_state_dict(state_dict)
 
     return model
-
-
-# Helper functions for managing training statistics
-def save_training_stats(stats: Dict[str, torch.Tensor | None], save_path: Path):
-    """Save training statistics to disk."""
-    torch.save(stats, save_path)
-
-
-def load_training_stats(load_path: Path) -> Dict[str, torch.Tensor]:
-    """Load training statistics from disk."""
-    return torch.load(load_path, weights_only=False)

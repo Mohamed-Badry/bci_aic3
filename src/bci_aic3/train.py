@@ -13,6 +13,12 @@ from pytorch_lightning import Callback, LightningModule, Trainer, seed_everythin
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from torch import nn, optim
 from torch.utils.data import DataLoader
+from torcheeg.models import (
+    ATCNet,
+    EEGNet,
+    FBCNet,
+    TSCeption,
+)
 
 from bci_aic3.config import (
     ModelConfig,
@@ -30,11 +36,20 @@ from bci_aic3.paths import (
     SSVEP_RUNS_DIR,
 )
 from bci_aic3.util import (
-    get_model_class,
     read_json_to_dict,
     rec_cpu_count,
     save_model,
 )
+
+
+def get_model_class(model_name: str) -> torch.nn.Module:
+    models = {
+        "ATCNet": ATCNet,
+        "EEGNet": EEGNet,
+        "FBCNet": FBCNet,
+        "TSCeption": TSCeption,
+    }
+    return models[model_name]
 
 
 class BCILightningModule(LightningModule):
