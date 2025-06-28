@@ -19,7 +19,6 @@ def save_labels(csv_file_path, mi_preds, ssvep_preds, output_file_path):
     df.loc[df["task"] == "SSVEP", "labels"] = ssvep_preds
     df.loc[df["task"] == "MI", "labels"] = mi_preds
 
-    output_file_path.mkdir(parents=True, exist=True)
     df[["id", "labels"]].to_csv(output_file_path, index=False)
     print(f"Labels successfully saved to the file {output_file_path}.")
 
@@ -100,6 +99,7 @@ def main():
         reverse_mapping=True,
     )
 
+    SUBMISSIONS_DIR.mkdir(parents=True, exist_ok=True)
     save_labels(
         csv_file_path=args.base_path / args.csv_file,
         mi_preds=mi_preds,
