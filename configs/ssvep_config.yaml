@@ -6,6 +6,23 @@ model:
   num_channels: 8
   sequence_length: 1750
 
+  # Model-specific parameters
+  eegnet:
+    F1: 16                # number of temporal filters
+    F2: 32                # number of spatial filters (F1 * D)
+    D: 2                  # depth multiplier for depthwise conv
+    kernel_1: 125         # ~1 second at 250Hz for temporal conv
+    kernel_2: 8           # spatial kernel size (all channels)
+    dropout: 0.25
+    
+  atcnet:
+    num_windows: 6
+    tcn_kernel_size: 4
+    F1: 4
+    D: 2
+    conv_pool_size: 7
+    tcn_depth: 2
+
 
 # training config
 training:

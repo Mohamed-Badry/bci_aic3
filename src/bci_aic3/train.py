@@ -30,10 +30,10 @@ from bci_aic3.paths import (
     SSVEP_RUNS_DIR,
 )
 from bci_aic3.util import (
+    get_model_class,
     read_json_to_dict,
     rec_cpu_count,
     save_model,
-    get_model_class,
 )
 
 
@@ -125,7 +125,7 @@ class BCILightningModule(LightningModule):
 
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self):  # type: ignore
         optimizer = optim.Adam(self.parameters(), lr=self.training_config.learning_rate)  # type: ignore
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -312,7 +312,9 @@ def train_model(
     return trainer, module
 
 
-def train_and_save(task_type: str):
+def train_and_save(
+    task_type: str,
+):
     config_path = None
     save_path = None
     if task_type.upper() == "MI":
@@ -344,11 +346,13 @@ def train_and_save(task_type: str):
     os.makedirs(checkpoints_subdir, exist_ok=True)
     print(f"Created temporary run directory: {temp_run_save_dir}")
 
-    model = model(
-        num_electrodes=model_config.num_channels,
-        chunk_size=model_config.new_sequence_length,
-        num_classes=model_config.num_classes,
-    )
+    model_kwargs = {
+        "num_electrodes": model_config.num_channels,
+        "chunk_size": model_config.new_sequence_length,
+        "num_classes": model_config.num_classes,
+        **model_config.params,
+    }
+    model = model(**model_kwargs)
 
     trainer, model = train_model(
         model=model,
@@ -393,7 +397,9 @@ def main():
     )
     args = parser.parse_args()
 
-    train_and_save(task_type=args.task_type)
+    train_and_save(
+        task_type=args.task_type,
+    )
 
 
 if __name__ == "__main__":

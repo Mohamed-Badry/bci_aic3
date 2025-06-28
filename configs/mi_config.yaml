@@ -1,11 +1,27 @@
 # model config
-model:
-  name: "ATCNet"      # {ATCNet | EEGNet}
+model:                # Common parameters
+  name: "EEGNet"      # {ATCNet | EEGNet}
   task_type: "MI"
   num_classes: 2
   num_channels: 8
   sequence_length: 2250
 
+  # Model-specific parameters
+  eegnet:
+    F1: 8
+    D: 1
+    F2: 8
+    kernel_1: 187
+    kernel_2: 16
+    dropout: 0.3
+    
+  atcnet:
+    num_windows: 6
+    tcn_kernel_size: 4
+    F1: 4
+    D: 2
+    conv_pool_size: 7
+    tcn_depth: 2
 
 # training config
 training:

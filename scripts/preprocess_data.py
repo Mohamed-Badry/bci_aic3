@@ -8,7 +8,7 @@ from bci_aic3.paths import (
     RAW_DATA_DIR,
     SSVEP_CONFIG_PATH,
 )
-from bci_aic3.preprocess import preprocessing_pipeline
+from bci_aic3.preprocess import preprocess_and_save
 from bci_aic3.util import read_json_to_dict
 
 """
@@ -62,7 +62,7 @@ def main():
         label_mapping=label_mapping,
     )
 
-    preprocessing_pipeline(
+    preprocess_and_save(
         train,
         val,
         task_type=task_type,

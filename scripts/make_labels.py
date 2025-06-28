@@ -8,7 +8,7 @@ from bci_aic3.paths import (
     SUBMISSIONS_DIR,
     RAW_DATA_DIR,
 )
-from bci_aic3.util import load_model
+from bci_aic3.train import BCILightningModule
 
 
 def save_labels(csv_file_path, mi_preds, ssvep_preds, output_file_path):
@@ -41,19 +41,31 @@ def main():
         type=Path,
     )
     parser.add_argument(
-        "--mi_model_dir",
-        help="Path to the MI model directory that has the weights.pt file.",
+        "--mi",
+        help="Path to the MI model checkpoint (.ckpt) file.",
         type=Path,
     )
     parser.add_argument(
-        "--ssvep_model_dir",
-        help="Path to the SSVEP model directorythat has the weights.pt file.",
+        "--ssvep",
+        help="Path to the SSVEP model checkpoint (.ckpt) file.",
         type=Path,
     )
     args = parser.parse_args()
 
-    mi_model = load_model(model_path=Path(args.mi_model_dir) / "weights.pt")
-    ssvep_model = load_model(model_path=Path(args.ssvep_model_dir) / "weights.pt")
+    mi_model_path = Path(args.mi)
+    ssvep_model_path = Path(args.ssvep)
+
+    if not mi_model_path.exists():
+        raise FileNotFoundError(
+            f"The MI model path provided {mi_model_path} doesn't exist"
+        )
+    if not ssvep_model_path.exists():
+        raise FileNotFoundError(
+            f"The SSVEP model path provided {ssvep_model_path} doesn't exist"
+        )
+
+    mi_model = BCILightningModule.load_from_checkpoint(mi_model_path)
+    ssvep_model = BCILightningModule.load_from_checkpoint(ssvep_model_path)
 
     mi_preds = make_inference(
         mi_model,

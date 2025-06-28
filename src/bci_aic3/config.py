@@ -1,7 +1,7 @@
 import yaml
 from dataclasses import dataclass, field
 from .paths import CONFIG_DIR
-from typing import List
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -14,20 +14,39 @@ class ModelConfig:
     new_sequence_length: (
         int  # this is the sequence length calculated after preprocessing
     )
+    params: Dict[str, Any] = field(default_factory=dict)  # All other params
 
 
 def load_model_config(path):
     """Load model config from YAML file."""
     with open(path) as f:
         config_dict = yaml.safe_load(f)
-        processing_config = config_dict["preprocessing"]
 
-        config_dict["model"]["new_sequence_length"] = int(
-            (processing_config["tmax"] - processing_config["tmin"])
-            * processing_config["sfreq"]
-        )
+    processing_config = config_dict["preprocessing"]
+    model_dict = config_dict["model"].copy()
 
-    return ModelConfig(**config_dict["model"])
+    model_dict["new_sequence_length"] = int(
+        (processing_config["tmax"] - processing_config["tmin"])
+        * processing_config["sfreq"]
+    )
+
+    # Get model-specific params
+    model_name = model_dict["name"].lower()
+    model_dict["params"] = config_dict["model"].get(model_name, {})
+
+    # Remove all model-specific sections (keep only base fields)
+    base_fields = {
+        "name",
+        "task_type",
+        "num_classes",
+        "sequence_length",
+        "num_channels",
+        "new_sequence_length",
+        "params",
+    }
+    model_dict = {k: v for k, v in model_dict.items() if k in base_fields}
+
+    return ModelConfig(**model_dict)
 
 
 @dataclass
@@ -87,6 +106,15 @@ def main():
 
     processing_settings = load_processing_config(CONFIG_DIR / "mi_config.yaml")
     print(processing_settings)
+
+    model_kwargs = {
+        "num_electrodes": model_config.num_channels,
+        "chunk_size": model_config.new_sequence_length,
+        "num_classes": model_config.num_classes,
+        **model_config.params,
+    }
+
+    print(model_kwargs)
 
 
 if __name__ == "__main__":

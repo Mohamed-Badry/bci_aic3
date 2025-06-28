@@ -1,13 +1,14 @@
+from typing import Tuple, Union
+
+import joblib
 import mne
 import numpy as np
 from scipy.signal import butter, filtfilt
-import torch
-from torch.utils.data import DataLoader
-from torcheeg import transforms
-from torcheeg.transforms import Lambda, BaseTransform
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import FunctionTransformer, Pipeline
+from torch.utils.data import DataLoader, Dataset
 
 from bci_aic3.config import ProcessingConfig
-from bci_aic3.data import BCIDataset
 from bci_aic3.paths import (
     PROCESSED_DATA_DIR,
     TRAINING_STATS_PATH,
@@ -16,306 +17,384 @@ from bci_aic3.paths import (
 # Copied from notebook as is probably needs some tweaks to work as a script and remove the side effects
 
 
-class MNENotchFilter:
-    """A callable transform class to apply a notch filter using MNE."""
+class MNENotchFilter(BaseEstimator, TransformerMixin):
+    """Notch filter using MNE for EEG data."""
 
-    def __init__(self, config):
-        self.sfreq = config.sfreq
-        self.notch_freq = config.notch_freq
+    def __init__(self, sfreq: float = 250.0, notch_freq: Union[float, list] = 50.0):
+        self.sfreq = sfreq
+        self.notch_freq = notch_freq
 
-    def __call__(self, **kwargs):
-        """Apply the notch filter to the EEG data."""
-        eeg = kwargs["eeg"]
+    def fit(self, X, y=None):
+        return self
 
-        # Convert to numpy if torch tensor
-        if isinstance(eeg, torch.Tensor):
-            device = eeg.device
-            dtype = eeg.dtype
-            eeg_np = eeg.detach().cpu().numpy()
-            was_torch = True
-        else:
-            eeg_np = eeg
-            was_torch = False
-
-        eeg_np = eeg_np.astype(float)
-        filtered = mne.filter.notch_filter(
-            eeg_np,
-            Fs=self.sfreq,
-            freqs=self.notch_freq,
-            method="iir",
-            verbose=False,
-        )
-
-        # Convert back to torch if input was torch
-        if was_torch:
-            kwargs["eeg"] = torch.from_numpy(filtered).to(device=device, dtype=dtype)
-        else:
-            kwargs["eeg"] = filtered
-
-        return kwargs
-
-
-class BandPassFilter:
-    """Simple bandpass filter for EEG signals."""
-
-    def __init__(self, config):
-        self.sfreq = config.sfreq
-        self.lfreq = config.bandpass_low
-        self.hfreq = config.bandpass_high
-        self.order = config.filter_order
-
-        # Pre-compute filter coefficients
-        nyquist = self.sfreq / 2
-        low = self.lfreq / nyquist
-        high = self.hfreq / nyquist
-        self.b, self.a = butter(self.order, [low, high], btype="bandpass")  # type: ignore
-
-    def __call__(self, **kwargs):
-        """Apply bandpass filter to EEG data."""
-        eeg = kwargs["eeg"]
-
-        # Convert to torch if numpy
-        if isinstance(eeg, np.ndarray):
-            eeg = torch.from_numpy(eeg).float()
-            was_numpy = True
-        else:
-            was_numpy = False
-
-        device = eeg.device
-        dtype = eeg.dtype
-
-        # Convert to numpy and filter
-        eeg_np = eeg.detach().cpu().numpy()
-
-        if eeg_np.ndim == 2:
-            filtered = np.array([filtfilt(self.b, self.a, ch) for ch in eeg_np])
-        else:  # 3D
-            filtered = np.array(
-                [[filtfilt(self.b, self.a, ch) for ch in batch] for batch in eeg_np]
-            )
-
-        kwargs["eeg"] = torch.from_numpy(filtered).to(device=device, dtype=dtype)
-        return kwargs
-
-
-class CustomCrop:
-    """A callable transform class to crop the EEG signal in time."""
-
-    def __init__(self, start: int, end: int):
-        self.start = start
-        self.end = end
-
-    def __call__(self, **kwargs):
-        """Apply temporal cropping to the EEG data."""
-        eeg = kwargs["eeg"]
-
-        if isinstance(eeg, torch.Tensor):
-            kwargs["eeg"] = eeg[:, self.start : self.end]
-        else:
-            kwargs["eeg"] = eeg[:, self.start : self.end]
-
-        return kwargs
-
-
-class FixedMeanStdNormalize(BaseTransform):
-    """
-    Normalize EEG data using precomputed mean and std per channel.
-
-    Args:
-        mean: Tensor of shape (n_channels,) with mean per channel.
-        std: Tensor of shape (n_channels,) with std per channel.
-    """
-
-    def __init__(self, mean, std):
-        super().__init__()
-        self.mean = mean
-        self.std = std
-
-    def __call__(self, **kwargs):
-        """
-        Apply normalization to a single EEG sample.
+    def transform(self, X):
+        """Apply notch filter to EEG data.
 
         Args:
-            data: Tensor of shape (n_channels, n_timepoints).
+            X: EEG data of shape (n_samples, n_channels, n_timepoints)
 
         Returns:
-            Normalized tensor of the same shape.
+            Filtered EEG data of same shape
         """
-        eeg = kwargs["eeg"]
+        X_filtered = np.zeros_like(X)
 
-        if isinstance(eeg, torch.Tensor):
-            kwargs["eeg"] = (eeg - self.mean[:, None]) / self.std[:, None]
+        for i, epoch in enumerate(X):
+            filtered = mne.filter.notch_filter(
+                epoch.astype(float),
+                Fs=self.sfreq,
+                freqs=self.notch_freq,
+                method="iir",
+                verbose=False,
+            )
+            X_filtered[i] = filtered
+
+        return X_filtered
+
+
+class BandPassFilter(BaseEstimator, TransformerMixin):
+    """Butterworth bandpass filter for EEG signals."""
+
+    def __init__(
+        self,
+        sfreq: float = 250.0,
+        low_freq: float = 1.0,
+        high_freq: float = 40.0,
+        order: int = 4,
+    ):
+        self.sfreq = sfreq
+        self.low_freq = low_freq
+        self.high_freq = high_freq
+        self.order = order
+        self._filter_coeffs = None
+
+    def fit(self, X, y=None):
+        # Pre-compute filter coefficients
+        nyquist = self.sfreq / 2
+        low = self.low_freq / nyquist
+        high = self.high_freq / nyquist
+        self._filter_coeffs = butter(self.order, [low, high], btype="bandpass")
+        return self
+
+    def transform(self, X):
+        """Apply bandpass filter to EEG data.
+
+        Args:
+            X: EEG data of shape (n_samples, n_channels, n_timepoints)
+
+        Returns:
+            Filtered EEG data of same shape
+        """
+        if self._filter_coeffs is None:
+            raise ValueError("Filter not fitted. Call fit() first.")
+
+        b, a = self._filter_coeffs  # type: ignore
+        X_filtered = np.zeros_like(X)
+
+        for i, epoch in enumerate(X):
+            filtered = np.array([filtfilt(b, a, ch) for ch in epoch])
+            X_filtered[i] = filtered
+
+        return X_filtered
+
+
+class TemporalCrop(BaseEstimator, TransformerMixin):
+    """Crop EEG signal in time dimension."""
+
+    def __init__(self, tmin: float = 0.0, tmax: float = 4.0, sfreq: float = 250.0):
+        self.tmin = tmin
+        self.tmax = tmax
+        self.sfreq = sfreq
+        self._start_idx = None
+        self._end_idx = None
+
+    def fit(self, X, y=None):
+        self._start_idx = int(self.tmin * self.sfreq)
+        self._end_idx = int(self.tmax * self.sfreq)
+        return self
+
+    def transform(self, X):
+        """Crop EEG data in time.
+
+        Args:
+            X: EEG data of shape (n_samples, n_channels, n_timepoints)
+
+        Returns:
+            Cropped EEG data of shape (n_samples, n_channels, cropped_timepoints)
+        """
+        return X[:, :, self._start_idx : self._end_idx]
+
+
+class StatisticalArtifactRemoval(BaseEstimator, TransformerMixin):
+    """Statistical artifact removal for ADC data without voltage conversion."""
+
+    def __init__(self, z_threshold: float = 3.0, method: str = "iqr"):
+        """
+        Args:
+            z_threshold: Z-score threshold for outlier detection
+            method: 'zscore', 'iqr', or 'percentile'
+        """
+        self.z_threshold = z_threshold
+        self.method = method
+        self._threshold = None
+        self.clean_indices_ = None
+
+    def fit(self, X, y=None):
+        if self.method == "zscore":
+            # Use standard deviation based threshold
+            std_vals = np.std(X, axis=2)
+            self._threshold = np.mean(std_vals) + self.z_threshold * np.std(std_vals)
+        elif self.method == "iqr":
+            # Use interquartile range
+            peak_to_peak = np.max(X, axis=2) - np.min(X, axis=2)
+            q75, q25 = np.percentile(peak_to_peak, [75, 25])
+            iqr = q75 - q25
+            self._threshold = q75 + 1.5 * iqr
+        elif self.method == "percentile":
+            # Use percentile threshold
+            peak_to_peak = np.max(X, axis=2) - np.min(X, axis=2)
+            self._threshold = np.percentile(peak_to_peak, 95)
+
+        return self
+
+    def transform(self, X):
+        """Remove artifacts based on statistical criteria."""
+        if self._threshold is None:
+            raise ValueError("Transformer not fitted. Call fit() first.")
+
+        # Calculate rejection criteria per epoch
+        if self.method == "zscore":
+            epoch_metric = np.std(X, axis=2)
         else:
-            kwargs["eeg"] = (eeg - self.mean[:, None]) / self.std[:, None]
-        return kwargs
+            epoch_metric = np.max(X, axis=2) - np.min(X, axis=2)
+
+        # Find clean epochs (all channels below threshold)
+        clean_mask = np.all(epoch_metric < self._threshold, axis=1)
+        self.clean_indices_ = np.where(clean_mask)[0]
+
+        if not np.any(clean_mask):
+            print(f"Warning: All epochs rejected with {self.method} method")
+            print("Returning original data")
+            self.clean_indices_ = np.arange(len(X))
+            return X
+
+        return X[clean_mask]
 
 
-class ChannelWiseNormalizer:
-    """A callable transform class for channel-wise z-score normalization."""
+class ChannelWiseNormalizer(BaseEstimator, TransformerMixin):
+    """Channel-wise normalization (z-score) for EEG data."""
 
-    def __init__(self, mean: np.ndarray, std: np.ndarray):
-        self.mean = mean
-        self.std = std
+    def __init__(self, axis: Tuple[int, ...] = (0, 2)):
+        """
+        Args:
+            axis: Axes over which to compute mean and std for normalization.
+                  Default (0, 2) normalizes across samples and time for each channel.
+        """
+        self.axis = axis
+        self.mean_ = None
+        self.std_ = None
 
-    def __call__(self, **kwargs):
-        """Apply normalization to the EEG data."""
-        eeg = kwargs["eeg"]
+    def fit(self, X, y=None):
+        """Compute channel-wise statistics from training data.
 
-        if isinstance(eeg, torch.Tensor):
-            mean_tensor = torch.from_numpy(self.mean).to(eeg.device, eeg.dtype)
-            std_tensor = torch.from_numpy(self.std).to(eeg.device, eeg.dtype)
-            kwargs["eeg"] = (eeg - mean_tensor) / std_tensor
-        else:
-            kwargs["eeg"] = (eeg - self.mean) / self.std
+        Args:
+            X: EEG data of shape (n_samples, n_channels, n_timepoints)
+        """
+        self.mean_ = np.mean(X, axis=self.axis, keepdims=True)
+        self.std_ = np.std(X, axis=self.axis, keepdims=True)
 
-        return kwargs
+        # Avoid division by zero
+        self.std_[self.std_ == 0] = 1e-6
+
+        return self
+
+    def transform(self, X):
+        """Apply channel-wise normalization.
+
+        Args:
+            X: EEG data of shape (n_samples, n_channels, n_timepoints)
+
+        Returns:
+            Normalized EEG data of same shape
+        """
+        if self.mean_ is None or self.std_ is None:
+            raise ValueError("Normalizer not fitted. Call fit() first.")
+
+        return (X - self.mean_) / self.std_
 
 
-def preprocessing_pipeline(
-    train_dataset: BCIDataset,
-    validation_dataset: BCIDataset,
+class EEGReshaper(BaseEstimator, TransformerMixin):
+    """Reshape EEG data for different model requirements."""
+
+    def __init__(self, target_shape: str = "flatten"):
+        """
+        Args:
+            target_shape: 'flatten' to reshape to (n_samples, n_features)
+                         'keep' to maintain original shape
+        """
+        self.target_shape = target_shape
+        self.original_shape_ = None
+
+    def fit(self, X, y=None):
+        self.original_shape_ = X.shape[1:]  # Store shape without sample dimension
+        return self
+
+    def transform(self, X):
+        """Reshape EEG data."""
+        if self.target_shape == "flatten":
+            return X.reshape(X.shape[0], -1)
+        return X
+
+    def inverse_transform(self, X):
+        """Restore original shape."""
+        if self.target_shape == "flatten" and self.original_shape_ is not None:
+            return X.reshape(X.shape[0], *self.original_shape_)
+        return X
+
+
+def unsqueeze_for_eeg(X):
+    """
+    Unsqueezes the input data to add a new dimension for the channel axis.
+    """
+    return np.expand_dims(X, axis=1)
+
+
+def create_eeg_pipeline(
+    task_type: str, processing_config: ProcessingConfig, test: bool = False
+):
+    """
+    Create a scikit-learn pipeline for EEG preprocessing.
+
+    Args:
+        task_type: 'MI' or 'SSVEP'
+        processing_config: Configuration object with processing parameters
+        test: when set to true artifact removal transform is excluded
+
+    Returns:
+        sklearn.pipeline.Pipeline
+    """
+
+    # Define pipeline steps
+    steps = [
+        (
+            "notch_filter",
+            MNENotchFilter(
+                sfreq=processing_config.sfreq, notch_freq=processing_config.notch_freq
+            ),
+        ),
+        (
+            "bandpass_filter",
+            BandPassFilter(
+                sfreq=processing_config.sfreq,
+                low_freq=processing_config.bandpass_low,
+                high_freq=processing_config.bandpass_high,
+                order=processing_config.filter_order,
+            ),
+        ),
+        (
+            "temporal_crop",
+            TemporalCrop(
+                tmin=processing_config.tmin,
+                tmax=processing_config.tmax,
+                sfreq=processing_config.sfreq,
+            ),
+        ),
+        ("channel_normalizer", ChannelWiseNormalizer(axis=(0, 2))),
+        ("reshaper", EEGReshaper(target_shape="keep")),
+        ("unsqueeze", FunctionTransformer(unsqueeze_for_eeg)),
+    ]
+    if not test:
+        steps.insert(
+            3,
+            (
+                "artifact_removal",
+                StatisticalArtifactRemoval(
+                    z_threshold=processing_config.z_threshold, method="iqr"
+                ),
+            ),
+        )
+
+    return Pipeline(steps)
+
+
+def preprocess_and_save(
+    train_dataset: Dataset,
+    val_dataset: Dataset,
     task_type: str,
     processing_config: ProcessingConfig,
 ):
-    """
-    The main pipeline to preprocess data using a torcheeg-based approach.
-
-    This pipeline:
-    1. Defines a series of transforms (Notch, Bandpass, Crop, Normalize).
-    2. Applies initial transforms to the training data to calculate normalization stats.
-    3. Creates a full pipeline with the calculated stats.
-    4. Applies the full pipeline to both training and validation data.
-    5. Saves the processed data to disk.
-    """
-    # Load all data into memory from the datasets
     train_loader = DataLoader(
-        train_dataset, batch_size=len(train_dataset), shuffle=False
+        train_dataset,
+        batch_size=len(train_dataset),  # type: ignore
+        shuffle=False,
     )
     train_data, train_labels = next(iter(train_loader))
     train_data, train_labels = train_data.numpy(), train_labels.numpy()
 
     val_loader = DataLoader(
-        validation_dataset, batch_size=len(validation_dataset), shuffle=False
+        val_dataset,
+        batch_size=len(val_dataset),  # type: ignore
+        shuffle=False,
     )
     val_data, val_labels = next(iter(val_loader))
     val_data, val_labels = val_data.numpy(), val_labels.numpy()
 
-    # --- Step 1: Define initial transforms (before normalization) ---
-    start_idx = int(processing_config.tmin * processing_config.sfreq)
-    end_idx = int(processing_config.tmax * processing_config.sfreq)
-
-    initial_transforms = None
-    if task_type.upper() == "MI":
-        initial_transforms = transforms.Compose(
-            [
-                MNENotchFilter(config=processing_config),
-                BandPassFilter(config=processing_config),
-                CustomCrop(start=start_idx, end=end_idx),
-            ]
-        )
-    elif task_type.upper() == "SSVEP":
-        initial_transforms = transforms.Compose(
-            [
-                MNENotchFilter(config=processing_config),
-                BandPassFilter(config=processing_config),
-                CustomCrop(start=start_idx, end=end_idx),
-            ]
-        )
-    else:
-        raise (
-            ValueError(
-                f"Invalid task_type: {task_type}.\nValid task_type (MI) or (SSVEP)"
-            )
-        )
-
-    # --- Step 2: Apply initial transforms to training data to get stats ---
-    print("Applying initial transforms to calculate normalization statistics...")
-    train_data_for_stats = np.array(
-        [initial_transforms(eeg=epoch) for epoch in train_data]
+    train_pipeline = create_eeg_pipeline(
+        task_type=task_type, processing_config=processing_config
     )
+    print("\nTraining Pipeline steps:")
+    for i, (name, transformer) in enumerate(train_pipeline.steps):
+        print(f"{i + 1}. {name}: {transformer.__class__.__name__}")
 
-    # Extract EEG data from the array of dictionaries
-    print(train_data_for_stats)
-    train_eeg_data = np.array([result["eeg"] for result in train_data_for_stats])
-
-    print(train_eeg_data)
-    # Calculate channel-wise normalization statistics from the transformed training data
-    mean = np.mean(train_eeg_data, axis=(0, 2), keepdims=True)
-    std = np.std(train_eeg_data, axis=(0, 2), keepdims=True)
-    std[std == 0] = 1e-6  # Add a small epsilon to std to avoid division by zero
-
-    print(f"Calculated Stats --- Mean shape: {mean.shape}, Std shape: {std.shape}")
-
-    # --- Step 3: Create the full, extensible processing pipeline ---
-    shift_samples = int(processing_config.percent_shifted * processing_config.sfreq)
-
-    training_transforms = transforms.Compose(
-        [
-            *initial_transforms.transforms,  # Unpack the initial transforms
-            # Lambda(lambda x: x.cpu().numpy() if isinstance(x, torch.Tensor) else x),
-            # transforms.MeanStdNormalize(axis=1),
-            # transforms.ToTensor(),
-            FixedMeanStdNormalize(mean, std),
-            transforms.RandomNoise(p=processing_config.p_noise, mean=0, std=0.1),
-            transforms.RandomShift(
-                p=processing_config.p_shift,
-                shift_min=-shift_samples,
-                shift_max=shift_samples,
-            ),  # type: ignore
-            Lambda(lambda x: x.squeeze(0)),
-        ]
+    test_pipeline = create_eeg_pipeline(
+        task_type=task_type, processing_config=processing_config, test=True
     )
+    print("\nTesting Pipeline steps:")
+    for i, (name, transformer) in enumerate(test_pipeline.steps):
+        print(f"{i + 1}. {name}: {transformer.__class__.__name__}")
 
-    validation_transforms = transforms.Compose(
-        [
-            *initial_transforms.transforms,  # Unpack the initial transforms
-            # Lambda(lambda x: x.cpu().numpy() if isinstance(x, torch.Tensor) else x),
-            FixedMeanStdNormalize(mean, std),
-            # transforms.MeanStdNormalize(axis=1),
-            # transforms.ToTensor(),
-            Lambda(lambda x: x.squeeze(0)),
-        ]
-    )
+    print(f"\nOriginal train data shape: {train_data.shape}")
+    print(f"Original validation data shape: {val_data.shape}")
+
+    train_data_transformed = train_pipeline.fit_transform(train_data)
+    test_pipeline.fit(train_data)
+    clean_indices = train_pipeline.named_steps["artifact_removal"].clean_indices_
+    train_labels_transformed = train_labels[clean_indices]
+    print(f"\nTransformed train data shape: {train_data_transformed.shape}")
+    print(f"Transformed train labels shape: {train_labels_transformed.shape}")
+
+    val_data_transformed = train_pipeline.transform(val_data)
+    clean_indices = train_pipeline.named_steps["artifact_removal"].clean_indices_
+    val_labels_transformed = val_labels[clean_indices]
+    print(f"\nTransformed validation data shape: {val_data_transformed.shape}")
+    print(f"Transformed validation labels shape: {val_labels_transformed.shape}")
 
     print(
-        f"\nPipeline created with {len(training_transforms.transforms)} steps: "
-        f"{[t.__class__.__name__ for t in training_transforms.transforms]}"
+        "\nTrain Channel Means (should be zero mean):\n",
+        train_data_transformed.mean(axis=(0, 1, 3)),
     )
-
-    # --- Step 4: Apply the final pipeline to all datasets ---
-    print("\nTransforming training data with the full pipeline...")
-    train_data_processed = np.array(
-        [training_transforms(eeg=epoch)["eeg"] for epoch in train_data]
-    )
-    print(f"Processed training data shape: {train_data_processed.shape}")
-    print("Done.")
-
-    norm = (train_data_processed - mean[:None]) / std[:None]
     print(
-        f"\nNormalized training data mean and std: \n{np.mean(norm, axis=(0, 3))}, \n{np.std(norm, axis=(0, 3))}, \n {np.std(norm, axis=(0, 2))}, \n{np.std(norm, axis=(0, 1, 3))}"
+        "\nTrain Channel Standard Deviations (should be unit std):\n",
+        train_data_transformed.std(axis=(0, 1, 3)),
+    )
+    print(
+        "\nValidation Channel Means (should be zero mean):\n",
+        val_data_transformed.mean(axis=(0, 1, 3)),
+    )
+    print(
+        "\nValidation Channel Standard Deviations (should be unit std or close to it):\n",
+        val_data_transformed.std(axis=(0, 1, 3)),
     )
 
-    print("Transforming validation data with the full pipeline...")
-    val_data_processed = np.array(
-        [validation_transforms(eeg=epoch)["eeg"] for epoch in val_data]
-    )
-    print(f"Processed validation data shape: {val_data_processed.shape}")
-    print("Done.")
-
-    # --- Step 5: Save the processed data ---
     output_dir = PROCESSED_DATA_DIR / task_type.upper()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    np.save(output_dir / "train_data.npy", train_data_processed)
-    np.save(output_dir / "train_labels.npy", train_labels)
-    np.save(output_dir / "validation_data.npy", val_data_processed)
-    np.save(output_dir / "validation_labels.npy", val_labels)
+    np.save(output_dir / "train_data.npy", train_data_transformed)
+    np.save(output_dir / "train_labels.npy", train_labels_transformed)
+    np.save(output_dir / "validation_data.npy", val_data_transformed)
+    np.save(output_dir / "validation_labels.npy", val_labels_transformed)
     print(f"\n✅ Processed data successfully saved to '{output_dir}'")
 
-
-def main():
-    print("This is Hell.")
-
-
-if __name__ == "__main__":
-    main()
+    pipeline_dir = TRAINING_STATS_PATH / task_type.upper()
+    joblib.dump(train_pipeline, pipeline_dir / "train_pipeline.pkl")
+    joblib.dump(test_pipeline, pipeline_dir / "test_pipeline.pkl")
+    print(f"\n✅ Preprocessing pipelines successfully saved to '{pipeline_dir}'")
