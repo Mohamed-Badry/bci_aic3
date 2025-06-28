@@ -312,6 +312,7 @@ def create_eeg_pipeline(
                 ),
             ),
         )
+    # if task_type == "SSVEP":
 
     return Pipeline(steps)
 

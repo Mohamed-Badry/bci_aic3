@@ -16,8 +16,6 @@ from torch.utils.data import DataLoader
 from torcheeg.models import (
     ATCNet,
     EEGNet,
-    FBCNet,
-    TSCeption,
 )
 
 from bci_aic3.config import (
@@ -46,8 +44,6 @@ def get_model_class(model_name: str) -> torch.nn.Module:
     models = {
         "ATCNet": ATCNet,
         "EEGNet": EEGNet,
-        "FBCNet": FBCNet,
-        "TSCeption": TSCeption,
     }
     return models[model_name]
 
@@ -264,10 +260,10 @@ def setup_callbacks(
     if checkpoints_path:
         checkpoint_callback = ModelCheckpoint(
             dirpath=checkpoints_path,
-            monitor="val_f1",
+            monitor="val_loss",
             mode="max",  # Higher F1 is better
             save_top_k=3,  # Keep top 3 models
-            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-f1-{{val_f1:.4f}}-{{epoch:02d}}",
+            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-loss-{{val_loss:.4f}}-{{epoch:02d}}",
             save_last=True,  # Always save the last checkpoint
             verbose=verbose,
         )

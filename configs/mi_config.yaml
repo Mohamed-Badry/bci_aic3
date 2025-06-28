@@ -1,6 +1,6 @@
 # model config
 model: # Common parameters
-  name: "ATCNet" # {EEGNet | ATCNet | FBCNet | TSCeption}
+  name: "ATCNet" # {EEGNet | ATCNet}
   task_type: "MI"
   num_classes: 2
   num_channels: 8
@@ -22,21 +22,6 @@ model: # Common parameters
     D: 2
     conv_pool_size: 7
     tcn_depth: 2 
-  
-  fbcnet:
-    in_channels: 9            
-    num_S: 32                 
-    temporal: "LogVarLayer"   
-    stride_factor: 4          
-    weight_norm: true         
-  
-  tsception:
-    num_T: 15                 
-    num_S: 15                 
-    in_channels: 1            
-    hid_channels: 32          
-    sampling_rate: 250        
-    dropout: 0.4              
 
 
 # training config
