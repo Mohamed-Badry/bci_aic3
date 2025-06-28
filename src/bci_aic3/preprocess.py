@@ -395,6 +395,7 @@ def preprocess_and_save(
     print(f"\n✅ Processed data successfully saved to '{output_dir}'")
 
     pipeline_dir = TRAINING_STATS_PATH / task_type.upper()
+    pipeline_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(train_pipeline, pipeline_dir / "train_pipeline.pkl")
     joblib.dump(test_pipeline, pipeline_dir / "test_pipeline.pkl")
     print(f"\n✅ Preprocessing pipelines successfully saved to '{pipeline_dir}'")
