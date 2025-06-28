@@ -11,7 +11,6 @@ class ModelConfig:
     num_classes: int
     sequence_length: int
     num_channels: int
-    n_csp_components: int  # Number of CSP components to keep (usually 4-8)
     new_sequence_length: (
         int  # this is the sequence length calculated after preprocessing
     )
@@ -34,9 +33,11 @@ def load_model_config(path):
 @dataclass
 class TrainingConfig:
     epochs: int
-    learning_rate: float
     batch_size: int
+    learning_rate: float
     patience: int
+    scheduler_patience: int
+    factor: float
 
 
 def load_training_config(path):
@@ -60,15 +61,10 @@ class ProcessingConfig:
     filter_order: int
 
     # Epoching and Cropping
-    tmin: float  # Start time of the MI task relative to cue
-    tmax: float  # End time of the MI task (e.g., 3-second window)
+    tmin: float
+    tmax: float
 
-    # ICA parameters
-    ica_n_components: int  # Use all channels for ICA
-    ica_random_state: int
-
-    # CSP parameters
-    n_csp_components: int  # Number of CSP components to keep (usually 4-8)
+    z_threshold: float
 
     ch_names: List[str] = field(
         default_factory=lambda: ["FZ", "C3", "CZ", "C4", "PZ", "PO7", "OZ", "PO8"]

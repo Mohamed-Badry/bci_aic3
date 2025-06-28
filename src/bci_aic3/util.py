@@ -7,6 +7,30 @@ from typing import Dict
 
 import torch
 from torch.nn.utils import parametrize
+from torcheeg.models import (
+    FBCCNN,
+    MTCNN,
+    ATCNet,
+    Conformer,
+    EEGNet,
+    FBCNet,
+    TSCeption,
+    FBMSNet,
+)
+
+
+def get_model_class(model_name: str) -> torch.nn.Module:
+    models = {
+        "FBCCNN": FBCCNN,
+        "MTCNN": MTCNN,
+        "ATCNet": ATCNet,
+        # "Conformer": Conformer,
+        "EEGNet": EEGNet,
+        "FBCNet": FBCNet,
+        "TSCeption": TSCeption,
+        "FBMSNet": FBMSNet,
+    }
+    return models[model_name]
 
 
 def ensure_base_path(base_path: str | Path) -> Path:
@@ -61,17 +85,52 @@ def remove_parametrizations(model):
     return model
 
 
-# Save model as torchscript
-def save_model(model, save_path: Path) -> None:
-    remove_parametrizations(model)
-    scripted_model = torch.jit.script(model)
-    torch.jit.save(scripted_model, save_path)
+def save_model(model: torch.nn.Module, save_path: Path) -> None:
+    """
+    Saves the model's state dictionary to the specified path.
+
+    This is a general-purpose function for saving the learned weights
+    of any PyTorch model.
+
+    Args:
+        model (nn.Module): The PyTorch model to save (can be nn.Module,
+                           pl.LightningModule, etc.).
+        save_path (Path): The file path to save the state_dict to.
+                          Conventionally ends with .pt or .pth.
+    """
+    print(f"Saving model weights to {save_path}...")
+    torch.save(model.state_dict(), save_path)
+    print("Model weights saved successfully.")
 
 
-# Load torchscript model
-def load_model(model_path: Path) -> type[torch.nn.Module]:
-    loaded_model = torch.jit.load(model_path)
-    return loaded_model
+def load_model(
+    model_class: type[torch.nn.Module], model_path: Path, *args, **kwargs
+) -> torch.nn.Module:
+    """
+    Loads a model's state dictionary from a file.
+
+    This function first instantiates the model and then loads the saved
+    state dictionary into it.
+
+    Args:
+        model_class (type[torch.nn.Module]): The class of the model to be loaded.
+        model_path (Path): The path to the saved model's state_dict.
+        *args: Variable length argument list for the model's constructor.
+        **kwargs: Arbitrary keyword arguments for the model's constructor.
+
+    Returns:
+        torch.nn.Module: The loaded PyTorch model.
+    """
+    # Instantiate the model with its required arguments
+    model = model_class(*args, **kwargs)
+
+    # Load the state dictionary
+    state_dict = torch.load(model_path)
+
+    # Load the state dictionary into the model
+    model.load_state_dict(state_dict)
+
+    return model
 
 
 # Helper functions for managing training statistics

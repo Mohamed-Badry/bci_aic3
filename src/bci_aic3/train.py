@@ -1,10 +1,10 @@
 # src/train.py
 
 import argparse
-from datetime import datetime
 import os
-from pathlib import Path
 import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import List, Tuple
 
 import torch
@@ -16,18 +16,11 @@ from torch.utils.data import DataLoader
 
 from bci_aic3.config import (
     ModelConfig,
+    TrainingConfig,
     load_model_config,
     load_training_config,
 )
 from bci_aic3.data import load_processed_data, load_raw_data
-from bci_aic3.models.eegnet import EEGNet
-from bci_aic3.models.sota import (
-    DeepConvNet,
-    ShallowConvNet,
-    ATCNet,
-    SSVEPformer,
-    MIN2Net,
-)
 from bci_aic3.paths import (
     LABEL_MAPPING_PATH,
     MI_CONFIG_PATH,
@@ -36,47 +29,31 @@ from bci_aic3.paths import (
     SSVEP_CONFIG_PATH,
     SSVEP_RUNS_DIR,
 )
-from bci_aic3.util import read_json_to_dict, rec_cpu_count, save_model
-
-
-def get_model_class(model_name: str):
-    models = {
-        "EEGNet": EEGNet,
-        "DeepConvNet": DeepConvNet,
-        "ShallowConvNet": ShallowConvNet,
-        "ATCNet": ATCNet,
-        "SSVEPformer": SSVEPformer,
-        "MIN2Net": MIN2Net,
-    }
-    return models[model_name]
+from bci_aic3.util import (
+    read_json_to_dict,
+    rec_cpu_count,
+    save_model,
+    get_model_class,
+)
 
 
 class BCILightningModule(LightningModule):
     def __init__(
         self,
-        model: type[nn.Module],
-        num_classes: int,
-        num_channels: int,
-        sequence_length: int,
-        lr: float,
-        # TODO: Add more hyperparameters from config
-        # optimizer_name: str = "adam",
-        # weight_decay: float = 0.0,
-        # scheduler_name: str = None,
+        model,
+        model_config: ModelConfig,
+        training_config: TrainingConfig,
     ):
         super().__init__()
+        self.save_hyperparameters()
+        self.num_classes = model_config.num_classes
+        self.num_channels = model_config.num_channels
+        self.sequence_length = model_config.new_sequence_length
 
-        self.num_classes = num_classes
-        self.num_channels = num_channels
-        self.sequence_length = sequence_length
-        self.lr = lr
+        self.training_config = training_config
 
         # Model
-        self.model = model(
-            self.num_classes,
-            self.num_channels,
-            self.sequence_length,
-        )
+        self.model = model
 
         # Loss function
         self.criterion = nn.CrossEntropyLoss()
@@ -126,7 +103,6 @@ class BCILightningModule(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
-
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -150,20 +126,24 @@ class BCILightningModule(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        # TODO: Make this configurable via hyperparameters
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.parameters(), lr=self.training_config.learning_rate)  # type: ignore
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer,
+            mode="min",
+            factor=self.training_config.factor,
+            patience=self.training_config.scheduler_patience,
+        )
 
-        # TODO: Add learning rate scheduler if needed
-        # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5)
-        # return {
-        #     "optimizer": optimizer,
-        #     "lr_scheduler": {
-        #         "scheduler": scheduler,
-        #         "monitor": "val_loss",
-        #     },
-        # }
-
-        return optimizer
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss",
+                "frequency": 1,
+                # If "monitor" references validation metrics, then "frequency" should be set to a
+                # multiple of "trainer.check_val_every_n_epoch".
+            },
+        }
 
     def predict_step(self, batch, batch_idx):
         # For inference/prediction
@@ -283,9 +263,8 @@ def setup_callbacks(
     return callbacks
 
 
-# TODO: Allow for model kwargs based on architecture
 def train_model(
-    model: type[nn.Module],
+    model: nn.Module,
     config_path: Path,
     checkpoints_path: Path | None = None,
     verbose: bool = True,
@@ -306,10 +285,8 @@ def train_model(
     # Create Lightning module
     module = BCILightningModule(
         model=model,
-        num_classes=model_config.num_classes,
-        num_channels=model_config.n_csp_components,
-        sequence_length=model_config.new_sequence_length,
-        lr=training_config.learning_rate,
+        model_config=model_config,
+        training_config=training_config,
     )
 
     # Setup callbacks
@@ -366,6 +343,12 @@ def train_and_save(task_type: str):
     checkpoints_subdir = temp_run_save_dir / "checkpoints"
     os.makedirs(checkpoints_subdir, exist_ok=True)
     print(f"Created temporary run directory: {temp_run_save_dir}")
+
+    model = model(
+        num_electrodes=model_config.num_channels,
+        chunk_size=model_config.new_sequence_length,
+        num_classes=model_config.num_classes,
+    )
 
     trainer, model = train_model(
         model=model,

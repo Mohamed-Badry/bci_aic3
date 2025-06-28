@@ -1,0 +1,41 @@
+# model config
+model:
+  name: "ATCNet"      # {FBCCNN | MTCNN | ATCNet | FBCNet | TSCeption | FBMSNet}
+  task_type: "MI"
+  num_classes: 2
+  num_channels: 8
+  sequence_length: 2250
+  n_csp_components: 6  # Number of CSP components to keep (usually 4-8)
+
+# training config
+training:
+  epochs: 200
+  batch_size: 64
+  learning_rate: 0.000005
+  patience: 50
+
+  # scheduler params
+  scheduler_patience: 3
+  factor: 0.2
+
+# preprocessing settings
+preprocessing:
+
+  notch_freq: 50.0
+  bandpass_low: 8.0
+  bandpass_high: 30.0
+  filter_order: 5
+
+  tmin: 0.5
+  tmax: 8.5
+  sfreq: 250.0
+
+  ica_n_components: 8
+  ica_random_state: 42
+
+  n_csp_components: 6
+
+  p_noise: 0.0
+  
+  p_shift: 0.0
+  percent_shifted: 0.15
