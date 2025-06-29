@@ -18,7 +18,7 @@ from bci_aic3.preprocess import (  # necessary to load preprocessing pipeline wi
     ChannelWiseNormalizer,  # noqa: F401
     EEGReshaper,  # noqa: F401
     MNENotchFilter,  # noqa: F401
-    StatisticalArtifactRemoval,  # noqa: F401
+    AutoRejectADC,  # noqa: F401
     TemporalCrop,  # noqa: F401
     unsqueeze_for_eeg,  # noqa: F401
 )
@@ -34,9 +34,11 @@ def load_and_preprocess_for_inference(
     # determine the test pipeline for the task type
     test_pipeline = None
     if task_type == "MI":
-        test_pipeline = joblib.load(MI_TRAINING_STATS_PATH / "test_pipeline.pkl")
+        test_pipeline = joblib.load(MI_TRAINING_STATS_PATH / "transform_pipeline.pkl")
     elif task_type == "SSVEP":
-        test_pipeline = joblib.load(SSVEP_TRAINING_STATS_PATH / "test_pipeline.pkl")
+        test_pipeline = joblib.load(
+            SSVEP_TRAINING_STATS_PATH / "transform_pipeline.pkl"
+        )
     else:
         raise (
             ValueError(

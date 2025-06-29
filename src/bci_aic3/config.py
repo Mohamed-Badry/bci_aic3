@@ -23,6 +23,7 @@ def load_model_config(path):
         config_dict = yaml.safe_load(f)
 
     processing_config = config_dict["preprocessing"]
+    # config_dict["model"]["num_channels"] = processing_config["ica_components"]
     model_dict = config_dict["model"].copy()
 
     model_dict["new_sequence_length"] = int(
@@ -83,10 +84,11 @@ class ProcessingConfig:
     tmin: float
     tmax: float
 
-    z_threshold: float
+    ica_components: int
+    ica_exclude: List[int]
 
     ch_names: List[str] = field(
-        default_factory=lambda: ["FZ", "C3", "CZ", "C4", "PZ", "PO7", "OZ", "PO8"]
+        default_factory=lambda: ["Fz", "C3", "Cz", "C4", "Pz", "PO7", "Oz", "PO8"]
     )
 
 

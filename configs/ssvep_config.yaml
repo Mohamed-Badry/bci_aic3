@@ -1,6 +1,6 @@
 # model config
 model:
-  name: "ATCNet" # {EEGNet | ATCNet}
+  name: "ATCNet"              # {EEGNet | ATCNet}
   task_type: "SSVEP"
   num_classes: 4
   num_channels: 8  
@@ -8,28 +8,28 @@ model:
 
   # Model-specific parameters
   eegnet:
-    F1: 32                    # increased for better frequency feature extraction
+    F1: 32                    
     F2: 64                    # F1 * D 
     D: 2                      # depth multiplier for depthwise conv
-    kernel_1: 62              # ~0.25s at 250Hz for SSVEP frequency resolution
-    kernel_2: 8               # spatial kernel size (all channels)
-    dropout: 0.3              # slightly higher for regularization
+    kernel_1: 62              
+    kernel_2: 8               
+    dropout: 0.3              
   
   atcnet:
-    num_windows: 5            # reduced for 7s window (1750/350=5)
-    tcn_kernel_size: 7        # larger for temporal patterns
-    F1: 16                    # increased for more features
-    D: 2                      # depth multiplier
-    conv_pool_size: 7         # pooling size
-    tcn_depth: 2              # depth of TCN
+    num_windows: 5           
+    tcn_kernel_size: 4        
+    F1: 8                     
+    D: 2                      
+    conv_pool_size: 5         
+    tcn_depth: 2              
 
 
 # training config
 training:
-  epochs: 200
+  epochs: 150
   batch_size: 32
   learning_rate: 0.001
-  patience: 50
+  patience: 30
 
   # scheduler params
   scheduler_patience: 10
@@ -40,13 +40,12 @@ training:
 preprocessing:
   
   notch_freq: 50.0
-  bandpass_low: 5.0
-  bandpass_high: 28.0
-  filter_order: 5
+  bandpass_low: 6.0
+  bandpass_high: 15.0
+  filter_order: 4
 
-  tmin: 0
+  tmin: 0.5
   tmax: 7
   sfreq: 250.0
 
-  z_threshold: 3
-
+  ica_components: 6

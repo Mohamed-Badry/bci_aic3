@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import joblib
 import mne
@@ -124,60 +124,139 @@ class TemporalCrop(BaseEstimator, TransformerMixin):
         return X[:, :, self._start_idx : self._end_idx]
 
 
-class StatisticalArtifactRemoval(BaseEstimator, TransformerMixin):
-    """Statistical artifact removal for ADC data without voltage conversion."""
+class MNEICA(BaseEstimator, TransformerMixin):
+    """
+    Scikit-learn compatible transformer for non-destructive EEG artifact removal using MNE's ICA.
 
-    def __init__(self, z_threshold: float = 3.0, method: str = "iqr"):
-        """
-        Args:
-            z_threshold: Z-score threshold for outlier detection
-            method: 'zscore', 'iqr', or 'percentile'
-        """
-        self.z_threshold = z_threshold
-        self.method = method
-        self._threshold = None
-        self.clean_indices_ = None
+    This transformer fits ICA on the provided data, allows for the exclusion of artifactual
+    components, and then reconstructs the signal without these components.
+
+    Parameters
+    ----------
+    sfreq : float
+        The sampling frequency of the EEG data.
+    n_components : int | float | None, default=None
+        The number of principal components to use for ICA.
+        If int, it must be <= n_channels.
+        If float (0 < n_components < 1), it selects the number of components that
+        explain at least `n_components` of the variance.
+        If None, all components are used.
+    random_state : int | None, default=None
+        The seed for the random number generator for reproducibility.
+    exclude : list of int, default=None
+        A list of IC indices to exclude. If None, the transformer will need to be
+        fit and the `exclude` attribute set manually before transforming data.
+    """
+
+    def __init__(
+        self,
+        sfreq: float,
+        n_components: Union[int, float, None] = None,
+        random_state: int = 42,
+        exclude: list = None,  # type: ignore
+    ):
+        self.sfreq = sfreq
+        self.n_components = n_components
+        self.random_state = random_state
+        self.exclude = exclude
+        self.ica_ = None
 
     def fit(self, X, y=None):
-        if self.method == "zscore":
-            # Use standard deviation based threshold
-            std_vals = np.std(X, axis=2)
-            self._threshold = np.mean(std_vals) + self.z_threshold * np.std(std_vals)
-        elif self.method == "iqr":
-            # Use interquartile range
-            peak_to_peak = np.max(X, axis=2) - np.min(X, axis=2)
-            q75, q25 = np.percentile(peak_to_peak, [75, 25])
-            iqr = q75 - q25
-            self._threshold = q75 + 1.5 * iqr
-        elif self.method == "percentile":
-            # Use percentile threshold
-            peak_to_peak = np.max(X, axis=2) - np.min(X, axis=2)
-            self._threshold = np.percentile(peak_to_peak, 95)
+        """
+        Fits the ICA model to the EEG data.
+
+        Args:
+            X: EEG data of shape (n_epochs, n_channels, n_timepoints)
+            y: Not used, for compatibility with sklearn API.
+
+        Returns:
+            self: The fitted transformer instance.
+        """
+        # MNE works with data in (n_channels, n_timepoints) format.
+        # We can concatenate the epochs to fit the ICA model.
+        X_concat = np.concatenate(X, axis=1)
+
+        # Create an MNE Raw object to work with MNE's ICA
+        ch_names = [f"EEG {i + 1}" for i in range(X.shape[1])]
+        info = mne.create_info(ch_names=ch_names, sfreq=self.sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(X_concat, info, verbose=False)
+
+        # High-pass filter the data for better ICA performance
+        raw.filter(l_freq=1.0, h_freq=None, verbose=False)
+
+        self.ica_ = mne.preprocessing.ICA(
+            n_components=self.n_components,
+            random_state=self.random_state,
+            verbose=False,
+        )
+        self.ica_.fit(raw, verbose=False)
 
         return self
 
     def transform(self, X):
-        """Remove artifacts based on statistical criteria."""
-        if self._threshold is None:
-            raise ValueError("Transformer not fitted. Call fit() first.")
+        """
+        Applies the fitted ICA to remove artifacts from the EEG data.
 
-        # Calculate rejection criteria per epoch
-        if self.method == "zscore":
-            epoch_metric = np.std(X, axis=2)
-        else:
-            epoch_metric = np.max(X, axis=2) - np.min(X, axis=2)
+        Args:
+            X: EEG data of shape (n_epochs, n_channels, n_timepoints)
 
-        # Find clean epochs (all channels below threshold)
-        clean_mask = np.all(epoch_metric < self._threshold, axis=1)
-        self.clean_indices_ = np.where(clean_mask)[0]
+        Returns:
+            Filtered EEG data of the same shape.
+        """
+        if self.ica_ is None:
+            raise RuntimeError(
+                "The ICA model has not been fitted yet. Call fit() first."
+            )
 
-        if not np.any(clean_mask):
-            print(f"Warning: All epochs rejected with {self.method} method")
-            print("Returning original data")
-            self.clean_indices_ = np.arange(len(X))
+        if self.exclude is None:
+            print(
+                "Warning: The 'exclude' attribute is not set. No components will be removed."
+            )
             return X
 
-        return X[clean_mask]
+        X_transformed = np.zeros_like(X)
+        ch_names = [f"EEG {i + 1}" for i in range(X.shape[1])]
+        info = mne.create_info(ch_names=ch_names, sfreq=self.sfreq, ch_types="eeg")
+
+        for i, epoch in enumerate(X):
+            raw_epoch = mne.io.RawArray(epoch, info, verbose=False)
+            self.ica_.apply(raw_epoch, exclude=self.exclude, verbose=False)
+            X_transformed[i] = raw_epoch.get_data()
+
+        return X_transformed
+
+    def plot_components(self, **kwargs):
+        """
+        Plot the ICA components.
+
+        This is a helper function to visualize the components to decide which to exclude.
+        """
+        if self.ica_ is None:
+            raise RuntimeError(
+                "The ICA model has not been fitted yet. Call fit() first."
+            )
+        self.ica_.plot_components(**kwargs)
+
+    def plot_sources(self, X, **kwargs):
+        """
+        Plot the time course of the ICA sources.
+
+        Args:
+            X: EEG data of shape (n_epochs, n_channels, n_timepoints)
+        """
+        if self.ica_ is None:
+            raise RuntimeError(
+                "The ICA model has not been fitted yet. Call fit() first."
+            )
+
+        X_concat = np.concatenate(X, axis=1)
+        info = mne.create_info(
+            ch_names=[f"EEG {i + 1}" for i in range(X.shape[1])],
+            sfreq=self.sfreq,
+            ch_types="eeg",
+        )
+        raw = mne.io.RawArray(X_concat, info, verbose=False)
+        self.ica_.plot_sources(raw, **kwargs)
 
 
 class ChannelWiseNormalizer(BaseEstimator, TransformerMixin):
@@ -259,7 +338,9 @@ def unsqueeze_for_eeg(X):
 
 
 def create_eeg_pipeline(
-    task_type: str, processing_config: ProcessingConfig, test: bool = False
+    task_type: str,
+    processing_config: ProcessingConfig,
+    ica_exclude: List[int],
 ):
     """
     Create a scikit-learn pipeline for EEG preprocessing.
@@ -298,21 +379,19 @@ def create_eeg_pipeline(
                 sfreq=processing_config.sfreq,
             ),
         ),
-        ("channel_normalizer", ChannelWiseNormalizer(axis=(0, 2))),
+        (
+            "artifact_removal",
+            MNEICA(
+                sfreq=processing_config.sfreq,
+                n_components=processing_config.ica_components,
+                random_state=42,
+                exclude=processing_config.ica_exclude,
+            ),
+        ),
+        ("channel_wise", ChannelWiseNormalizer()),
         ("reshaper", EEGReshaper(target_shape="keep")),
         ("unsqueeze", FunctionTransformer(unsqueeze_for_eeg)),
     ]
-    if not test:
-        steps.insert(
-            3,
-            (
-                "artifact_removal",
-                StatisticalArtifactRemoval(
-                    z_threshold=processing_config.z_threshold, method="iqr"
-                ),
-            ),
-        )
-    # if task_type == "SSVEP":
 
     return Pipeline(steps)
 
@@ -340,32 +419,24 @@ def preprocess_and_save(
     val_data, val_labels = val_data.numpy(), val_labels.numpy()
 
     train_pipeline = create_eeg_pipeline(
-        task_type=task_type, processing_config=processing_config
+        task_type=task_type,
+        processing_config=processing_config,
+        ica_exclude=[0, 2],
     )
     print("\nTraining Pipeline steps:")
     for i, (name, transformer) in enumerate(train_pipeline.steps):
-        print(f"{i + 1}. {name}: {transformer.__class__.__name__}")
-
-    test_pipeline = create_eeg_pipeline(
-        task_type=task_type, processing_config=processing_config, test=True
-    )
-    print("\nTesting Pipeline steps:")
-    for i, (name, transformer) in enumerate(test_pipeline.steps):
         print(f"{i + 1}. {name}: {transformer.__class__.__name__}")
 
     print(f"\nOriginal train data shape: {train_data.shape}")
     print(f"Original validation data shape: {val_data.shape}")
 
     train_data_transformed = train_pipeline.fit_transform(train_data)
-    test_pipeline.fit(train_data)
-    clean_indices = train_pipeline.named_steps["artifact_removal"].clean_indices_
-    train_labels_transformed = train_labels[clean_indices]
+    train_labels_transformed = train_labels
     print(f"\nTransformed train data shape: {train_data_transformed.shape}")
     print(f"Transformed train labels shape: {train_labels_transformed.shape}")
 
     val_data_transformed = train_pipeline.transform(val_data)
-    clean_indices = train_pipeline.named_steps["artifact_removal"].clean_indices_
-    val_labels_transformed = val_labels[clean_indices]
+    val_labels_transformed = val_labels
     print(f"\nTransformed validation data shape: {val_data_transformed.shape}")
     print(f"Transformed validation labels shape: {val_labels_transformed.shape}")
 
@@ -397,6 +468,5 @@ def preprocess_and_save(
 
     pipeline_dir = TRAINING_STATS_PATH / task_type.upper()
     pipeline_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump(train_pipeline, pipeline_dir / "train_pipeline.pkl")
-    joblib.dump(test_pipeline, pipeline_dir / "test_pipeline.pkl")
+    joblib.dump(train_pipeline, pipeline_dir / "transform_pipeline.pkl")
     print(f"\n✅ Preprocessing pipelines successfully saved to '{pipeline_dir}'")

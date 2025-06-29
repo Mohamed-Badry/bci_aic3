@@ -261,9 +261,9 @@ def setup_callbacks(
         checkpoint_callback = ModelCheckpoint(
             dirpath=checkpoints_path,
             monitor="val_loss",
-            mode="max",  # Higher F1 is better
+            mode="min",
             save_top_k=3,  # Keep top 3 models
-            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-loss-{{val_loss:.4f}}-{{epoch:02d}}",
+            filename=f"{model_config.name.lower()}-{model_config.task_type.lower()}-best-{{val_loss:.4f}}-{{val_f1:.4f}}-{{epoch:02d}}",
             save_last=True,  # Always save the last checkpoint
             verbose=verbose,
         )
@@ -359,7 +359,8 @@ def train_and_save(
 
     model_kwargs = {
         "num_electrodes": model_config.num_channels,
-        "chunk_size": model_config.new_sequence_length,
+        # "chunk_size": model_config.new_sequence_length,
+        "chunk_size": 813,
         "num_classes": model_config.num_classes,
         **model_config.params,
     }
